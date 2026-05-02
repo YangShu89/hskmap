@@ -59,6 +59,58 @@ input:focus-visible {
   margin: 0 auto;
   padding: 18px 0 36px;
 }
+.app-shell:has(.level-overview) {
+  padding-top: 12px;
+}
+
+.app-shell:has(.level-overview) .hero {
+  display: none;
+}
+
+.app-shell:has(.level-overview) .toolbar {
+  position: relative;
+  top: auto;
+  grid-template-columns: minmax(240px, 1fr) auto auto;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+}
+
+.app-shell:has(.level-overview) .level-tabs {
+  display: none;
+}
+
+.app-shell:has(.level-overview) .level-overview {
+  gap: 12px;
+}
+
+.app-shell:has(.level-overview) .level-card-main {
+  min-height: 116px;
+  padding: 14px 16px;
+}
+
+.app-shell:has(.level-overview) .level-card-title {
+  font-size: clamp(2.6rem, 4.8vw, 4.1rem);
+}
+
+.app-shell:has(.level-overview) .level-card-stats span {
+  padding: 8px 6px;
+  font-size: 0.74rem;
+}
+
+.app-shell:has(.level-overview) .level-word-preview {
+  flex-wrap: nowrap;
+  min-height: 48px;
+  overflow: hidden;
+  padding: 10px 12px;
+}
+
+.app-shell:has(.level-overview) .preview-word {
+  flex: 0 0 auto;
+  min-height: 30px;
+  min-width: 36px;
+  padding: 0 9px;
+}
+
 
 .hero {
   display: grid;
@@ -150,6 +202,7 @@ h1 {
   grid-template-columns: auto minmax(220px, 1fr) auto auto;
   gap: 12px;
   align-items: center;
+  min-width: 0;
   margin: 0 0 18px;
   padding: 12px;
   border: 1px solid rgba(17, 24, 39, 0.08);
@@ -190,9 +243,13 @@ h1 {
 .filter-tabs {
   display: flex;
   gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
   padding: 4px;
   border-radius: 8px;
   background: #eef2f7;
+  scrollbar-width: thin;
 }
 
 .level-tabs {
@@ -259,6 +316,7 @@ h1 {
   gap: 10px;
   align-items: center;
   justify-content: end;
+  min-width: 0;
   color: #64748b;
   font-size: 0.88rem;
   font-weight: 800;
@@ -1344,7 +1402,7 @@ h1 {
   }
 }
 
-@media (max-width: 1120px) {
+@media (max-width: 1540px) {
   .hero {
     grid-template-columns: 1fr;
   }
@@ -1357,12 +1415,54 @@ h1 {
     grid-template-columns: 1fr;
   }
 
+  .level-tabs button,
+  .filter-tabs button {
+    flex: 0 0 auto;
+  }
+
   .toolbar-meta {
     justify-content: space-between;
     flex-wrap: wrap;
   }
 }
 
+@media (max-width: 900px) {
+  .app-shell:has(.level-overview) {
+    width: min(100% - 16px, 1500px);
+    padding-top: 8px;
+  }
+
+  .app-shell:has(.level-overview) .toolbar {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding: 8px;
+  }
+
+  .app-shell:has(.level-overview) .level-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .app-shell:has(.level-overview) .level-card-main {
+    min-height: 94px;
+    padding: 10px;
+  }
+
+  .app-shell:has(.level-overview) .level-card-kicker,
+  .app-shell:has(.level-overview) .level-card-count {
+    font-size: 0.68rem;
+  }
+
+  .app-shell:has(.level-overview) .level-card-title {
+    font-size: clamp(2.15rem, 13vw, 3.25rem);
+  }
+
+  .app-shell:has(.level-overview) .level-card-stats,
+  .app-shell:has(.level-overview) .level-word-preview {
+    display: none;
+  }
+}
 @media (max-width: 720px) {
   .app-shell {
     width: min(100% - 20px, 1500px);
