@@ -3,6 +3,7 @@ import { HSK1_SENTENCES } from './hsk1Sentences';
 import { HSK2_SENTENCES } from './hsk2Sentences';
 import { HSK3_SENTENCES } from './hsk3Sentences';
 import { HSK4_SENTENCES } from './hsk4Sentences';
+import { HSK5_SENTENCES } from './hsk5Sentences';
 import { HSK5_RAW, HSK6_RAW } from './hsk56';
 import type { ClusterId, HskLevel, HskWord } from '../types';
 
@@ -1520,7 +1521,10 @@ export const HSK4_WORDS = buildWords(4, HSK4_RAW).map((word) => ({
   ...word,
   exampleSentence: HSK4_SENTENCES[word.id],
 }));
-export const HSK5_WORDS = buildWords(5, HSK5_RAW);
+export const HSK5_WORDS = buildWords(5, HSK5_RAW).map((word) => ({
+  ...word,
+  exampleSentence: HSK5_SENTENCES[word.id],
+}));
 export const HSK6_WORDS = buildWords(6, HSK6_RAW);
 
 export const HSK_WORDS_BY_LEVEL: Record<HskLevel, HskWord[]> = {
