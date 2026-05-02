@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import HanziWriter, { type StrokeData } from 'hanzi-writer';
 import { HSK_LEVEL_OPTIONS, HSK_WORDS_BY_LEVEL } from './data/hsk';
 import { useMandarinSpeech } from './hooks/useMandarinSpeech';
 import { useProgress } from './hooks/useProgress';
@@ -6,6 +7,16 @@ import type { HskLevel, HskWord, WordStatus } from './types';
 
 type FilterMode = 'all' | 'learning' | 'know' | 'unmarked';
 type HskView = HskLevel | 'all';
+type WritingMode = 'watch' | 'practice';
+
+interface PracticeFeedback {
+  completedStrokes: number;
+  currentStroke: number;
+  isComplete: boolean;
+  message: string;
+  totalMistakes: number;
+  totalStrokes: number;
+}
 
 const DEFAULT_ZOOM = 1;
 const MIN_ZOOM = 0.08;
@@ -40,6 +51,7 @@ const FILTERS: { id: FilterMode; label: string }[] = [
   { id: 'know', label: 'Know' },
   { id: 'unmarked', label: 'Unmarked' },
 ];
+const WRITING_PRACTICE_LEVELS = new Set<HskLevel>([1, 2, 3, 4, 5, 6]);
 
 function normalize(value: string) {
   return value
@@ -131,6 +143,38 @@ function getTileTextScale(label: string) {
   return Math.max(0.1, Math.min(0.38, widthScale, heightScale));
 }
 
+function getModalHanziCharacterCount(hanzi: string) {
+  return Math.max(Array.from(hanzi.replace(/\s/g, '')).length, 1);
+}
+
+function getWritableCharacters(hanzi: string) {
+  return Array.from(hanzi).filter((character) => /[\u3400-\u9fff]/u.test(character));
+}
+
+function getInitialPracticeFeedback(character: string): PracticeFeedback {
+  return {
+    completedStrokes: 0,
+    currentStroke: 1,
+    isComplete: false,
+    message: `Write ${character}`,
+    totalMistakes: 0,
+    totalStrokes: 0,
+  };
+}
+
+function getStrokeProgress(strokeData: StrokeData, isCorrect: boolean) {
+  const completedStrokes = strokeData.strokeNum + (isCorrect ? 1 : 0);
+  const totalStrokes = completedStrokes + strokeData.strokesRemaining;
+
+  return {
+    completedStrokes,
+    currentStroke: isCorrect
+      ? Math.min(totalStrokes, completedStrokes + 1)
+      : Math.min(totalStrokes, strokeData.strokeNum + 1),
+    totalStrokes,
+  };
+}
+
 function formatCssNumber(value: number, digits = 4) {
   return Number(value.toFixed(digits)).toString();
 }
@@ -185,6 +229,327 @@ function TileButton({
   );
 }
 
+function HanziWriterCard({ hanzi }: { hanzi: string }) {
+  const characters = useMemo(() => getWritableCharacters(hanzi), [hanzi]);
+  const targetRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const writerRefs = useRef<Array<HanziWriter | null>>([]);
+  const practiceTargetRef = useRef<HTMLDivElement | null>(null);
+  const practiceWriterRef = useRef<HanziWriter | null>(null);
+  const advancePracticeTimerRef = useRef(0);
+  const [mode, setMode] = useState<WritingMode>('watch');
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [practiceIndex, setPracticeIndex] = useState(0);
+  const [practiceResetKey, setPracticeResetKey] = useState(0);
+  const [completedCharacters, setCompletedCharacters] = useState<boolean[]>([]);
+  const activePracticeCharacter = characters[practiceIndex] ?? characters[0] ?? '';
+  const practiceFeedback = useMemo(
+    () => getInitialPracticeFeedback(activePracticeCharacter),
+    [activePracticeCharacter],
+  );
+  const [practiceState, setPracticeState] = useState<PracticeFeedback>(practiceFeedback);
+  const completedPracticeCount = completedCharacters.filter(Boolean).length;
+  const isPracticeComplete = characters.length > 0 && completedPracticeCount === characters.length;
+
+  const animateCharacters = useCallback(async () => {
+    for (const writer of writerRefs.current) {
+      await writer?.animateCharacter();
+    }
+  }, []);
+
+  useEffect(() => {
+    setMode('watch');
+    setLoadError(null);
+    setPracticeIndex(0);
+    setPracticeResetKey(0);
+    setCompletedCharacters(characters.map(() => false));
+    setPracticeState(getInitialPracticeFeedback(characters[0] ?? ''));
+  }, [characters, hanzi]);
+
+  useEffect(() => {
+    setPracticeState(getInitialPracticeFeedback(activePracticeCharacter));
+  }, [activePracticeCharacter, practiceResetKey]);
+
+  useEffect(() => {
+    if (mode !== 'watch') {
+      return undefined;
+    }
+
+    setLoadError(null);
+    writerRefs.current = [];
+
+    characters.forEach((character, index) => {
+      const target = targetRefs.current[index];
+      if (!target) {
+        return;
+      }
+
+      target.replaceChildren();
+      writerRefs.current[index] = HanziWriter.create(target, character, {
+        width: 112,
+        height: 112,
+        padding: 8,
+        showCharacter: false,
+        showOutline: true,
+        strokeAnimationSpeed: 1.45,
+        delayBetweenStrokes: 260,
+        strokeColor: '#0f172a',
+        outlineColor: '#cbd5e1',
+        radicalColor: '#ef4444',
+        highlightColor: '#facc15',
+        onLoadCharDataError: () => {
+          setLoadError('Stroke data could not be loaded for this character.');
+        },
+      });
+    });
+
+    const animationTimer = window.setTimeout(() => {
+      void animateCharacters();
+    }, 220);
+
+    return () => {
+      window.clearTimeout(animationTimer);
+      targetRefs.current.forEach((target) => target?.replaceChildren());
+      writerRefs.current = [];
+    };
+  }, [animateCharacters, characters, mode]);
+
+  useEffect(() => {
+    if (mode !== 'practice' || !activePracticeCharacter) {
+      return undefined;
+    }
+
+    const target = practiceTargetRef.current;
+    if (!target) {
+      return undefined;
+    }
+
+    setLoadError(null);
+    target.replaceChildren();
+    practiceWriterRef.current = HanziWriter.create(target, activePracticeCharacter, {
+      width: 220,
+      height: 220,
+      padding: 12,
+      showCharacter: false,
+      showOutline: true,
+      drawingColor: '#2563eb',
+      drawingWidth: 18,
+      strokeColor: '#0f172a',
+      outlineColor: '#cbd5e1',
+      radicalColor: '#ef4444',
+      highlightColor: '#facc15',
+      highlightOnComplete: true,
+      showHintAfterMisses: 2,
+      onLoadCharDataSuccess: (data) => {
+        setPracticeState((current) => ({
+          ...current,
+          currentStroke: data.strokes.length ? 1 : 0,
+          totalStrokes: data.strokes.length,
+        }));
+      },
+      onLoadCharDataError: () => {
+        setLoadError('Stroke data could not be loaded for this character.');
+      },
+    });
+
+    void practiceWriterRef.current.quiz({
+      showHintAfterMisses: 2,
+      onMistake: (strokeData) => {
+        const progress = getStrokeProgress(strokeData, false);
+        setPracticeState({
+          ...progress,
+          isComplete: false,
+          message: 'Try that stroke again',
+          totalMistakes: strokeData.totalMistakes,
+        });
+      },
+      onCorrectStroke: (strokeData) => {
+        const progress = getStrokeProgress(strokeData, true);
+        setPracticeState({
+          ...progress,
+          isComplete: false,
+          message: 'Good stroke',
+          totalMistakes: strokeData.totalMistakes,
+        });
+      },
+      onComplete: (summaryData) => {
+        setCompletedCharacters((current) =>
+          current.map((isComplete, index) => (index === practiceIndex ? true : isComplete)),
+        );
+        setPracticeState((current) => ({
+          ...current,
+          completedStrokes: current.totalStrokes,
+          currentStroke: current.totalStrokes,
+          isComplete: true,
+          message:
+            practiceIndex < characters.length - 1
+              ? `${summaryData.character} complete`
+              : 'Word complete',
+          totalMistakes: summaryData.totalMistakes,
+        }));
+
+        if (practiceIndex < characters.length - 1) {
+          window.clearTimeout(advancePracticeTimerRef.current);
+          advancePracticeTimerRef.current = window.setTimeout(() => {
+            setPracticeIndex((current) => Math.min(current + 1, characters.length - 1));
+          }, 850);
+        }
+      },
+    });
+
+    return () => {
+      window.clearTimeout(advancePracticeTimerRef.current);
+      practiceWriterRef.current?.cancelQuiz();
+      target.replaceChildren();
+      practiceWriterRef.current = null;
+    };
+  }, [activePracticeCharacter, characters.length, mode, practiceIndex, practiceResetKey]);
+
+  const handleModeChange = useCallback(
+    (nextMode: WritingMode) => {
+      setMode(nextMode);
+
+      if (nextMode === 'practice') {
+        setPracticeIndex(0);
+        setPracticeResetKey((key) => key + 1);
+        setCompletedCharacters(characters.map(() => false));
+      }
+    },
+    [characters],
+  );
+
+  const handlePracticeReset = useCallback(() => {
+    setPracticeIndex(0);
+    setPracticeResetKey((key) => key + 1);
+    setCompletedCharacters(characters.map(() => false));
+  }, [characters]);
+
+  const handlePracticeHint = useCallback(() => {
+    const strokeIndex = Math.max(practiceState.currentStroke - 1, 0);
+    void practiceWriterRef.current?.highlightStroke(strokeIndex);
+  }, [practiceState.currentStroke]);
+
+  if (!characters.length) {
+    return null;
+  }
+
+  return (
+    <div className={mode === 'practice' ? 'writing-card is-practice' : 'writing-card'}>
+      <div className="writing-card-header">
+        <p className="writing-kicker">Stroke order</p>
+        <div className="writing-card-controls">
+          <div className="writing-mode-tabs" role="group" aria-label="Writing mode">
+            <button
+              className={mode === 'watch' ? 'active' : ''}
+              type="button"
+              onClick={() => handleModeChange('watch')}
+            >
+              Watch
+            </button>
+            <button
+              className={mode === 'practice' ? 'active' : ''}
+              type="button"
+              onClick={() => handleModeChange('practice')}
+            >
+              Practice
+            </button>
+          </div>
+          {mode === 'watch' ? (
+            <button className="writing-replay" type="button" onClick={() => void animateCharacters()}>
+              Replay
+            </button>
+          ) : (
+            <button className="writing-replay" type="button" onClick={handlePracticeReset}>
+              Reset
+            </button>
+          )}
+        </div>
+      </div>
+
+      {mode === 'watch' ? (
+        <div className="writing-grid" aria-label={`Stroke order animation for ${hanzi}`}>
+          {characters.map((character, index) => (
+            <div className="writer-character" key={`${character}-${index}`}>
+              <div
+                className="writer-target"
+                ref={(node) => {
+                  targetRefs.current[index] = node;
+                }}
+                aria-label={`Animated stroke order for ${character}`}
+              />
+              <span>{character}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="practice-panel">
+          <div className="practice-meta">
+            <div>
+              <span className="practice-word">{hanzi}</span>
+              <span className="practice-step">
+                Character {practiceIndex + 1} / {characters.length}
+              </span>
+            </div>
+            <div className={practiceState.isComplete ? 'practice-message is-complete' : 'practice-message'}>
+              {practiceState.message}
+            </div>
+          </div>
+
+          <div className="practice-body">
+            <div className="practice-target-wrap">
+              <div
+                className="writer-target practice-target"
+                key={`${activePracticeCharacter}-${practiceIndex}-${practiceResetKey}`}
+                ref={practiceTargetRef}
+                aria-label={`Practice writing ${activePracticeCharacter}`}
+              />
+            </div>
+            <div className="practice-sidebar">
+              <div className="practice-character-tabs" role="group" aria-label="Practice character">
+                {characters.map((character, index) => (
+                  <button
+                    className={[
+                      index === practiceIndex ? 'active' : '',
+                      completedCharacters[index] ? 'complete' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                    key={`${character}-${index}`}
+                    type="button"
+                    onClick={() => setPracticeIndex(index)}
+                  >
+                    {character}
+                  </button>
+                ))}
+              </div>
+              <div className="practice-stats" aria-live="polite">
+                <span>
+                  Stroke {practiceState.totalStrokes ? practiceState.currentStroke : 0} /{' '}
+                  {practiceState.totalStrokes || '-'}
+                </span>
+                <span>{practiceState.completedStrokes} done</span>
+                <span>{practiceState.totalMistakes} mistakes</span>
+                <span>
+                  {completedPracticeCount} / {characters.length} characters
+                </span>
+              </div>
+              <button
+                className="writing-hint"
+                disabled={!practiceState.totalStrokes || isPracticeComplete}
+                type="button"
+                onClick={handlePracticeHint}
+              >
+                Hint
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {loadError ? <p className="writing-error">{loadError}</p> : null}
+    </div>
+  );
+}
+
 function DetailModal({
   word,
   status,
@@ -206,6 +571,18 @@ function DetailModal({
   onSetStatus: (wordId: string, status: WordStatus) => void;
   onClearStatus: (wordId: string) => void;
 }) {
+  const [isAnswerVisible, setIsAnswerVisible] = useState(false);
+  const [isSentenceExpanded, setIsSentenceExpanded] = useState(false);
+  const hanziCharacterCount = getModalHanziCharacterCount(word.hanzi);
+  const flashcardStyle = {
+    '--modal-hanzi-count': hanziCharacterCount,
+  } as React.CSSProperties;
+
+  useEffect(() => {
+    setIsAnswerVisible(false);
+    setIsSentenceExpanded(false);
+  }, [word.id]);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -217,6 +594,7 @@ function DetailModal({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
   const audioNote = audioAvailable ? speechMessage : 'Audio for HSK 5-6 will be added later.';
+  const hasWritingAnimation = WRITING_PRACTICE_LEVELS.has(word.level ?? 1);
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose} role="presentation">
@@ -227,22 +605,70 @@ function DetailModal({
         onMouseDown={(event) => event.stopPropagation()}
         role="dialog"
       >
-        <button className="modal-close" type="button" onClick={onClose} aria-label="Close details">
-          x
-        </button>
-
-        <div className="modal-word-stack">
-          <p className="modal-kicker">HSK {word.level ?? 1} Word</p>
-          <h2 id="word-detail-title">{word.hanzi}</h2>
-          <p className="modal-pinyin">{word.pinyin}</p>
-          <p className="modal-meaning">{word.meaning}</p>
+        <div className="modal-topbar">
+          <button className="modal-close" type="button" onClick={onClose} aria-label="Close details">
+            <span className="modal-close-mark" aria-hidden="true" />
+          </button>
         </div>
 
-        {word.examples?.length ? (
-          <div className="examples">
-            {word.examples.map((example) => (
-              <p key={example}>{example}</p>
-            ))}
+        <h2 className="sr-only" id="word-detail-title">
+          {word.hanzi}
+        </h2>
+
+        <button
+          aria-controls="word-detail-answer"
+          aria-expanded={isAnswerVisible}
+          className={isAnswerVisible ? 'flashcard-card is-revealed' : 'flashcard-card'}
+          onClick={() => setIsAnswerVisible((visible) => !visible)}
+          style={flashcardStyle}
+          type="button"
+        >
+          <span className="flashcard-face flashcard-front" aria-hidden={isAnswerVisible}>
+            <span className="modal-kicker">HSK {word.level ?? 1} Word</span>
+            <span className="modal-hanzi">{word.hanzi}</span>
+            <span className="flashcard-cue">Reveal answer</span>
+          </span>
+          <span className="flashcard-face flashcard-back" aria-hidden={!isAnswerVisible}>
+            <span className="modal-kicker">HSK {word.level ?? 1} Word</span>
+            <span className="modal-meaning">{word.meaning}</span>
+            <span className="modal-pinyin">{word.pinyin}</span>
+            <span className="flashcard-cue">Hide answer</span>
+          </span>
+        </button>
+
+        <div className={isAnswerVisible ? 'modal-answer is-visible' : 'modal-answer'} id="word-detail-answer">
+          {word.examples?.length ? (
+            <div className="examples">
+              {word.examples.map((example) => (
+                <p key={example}>{example}</p>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        {hasWritingAnimation ? <HanziWriterCard hanzi={word.hanzi} /> : null}
+
+        {word.exampleSentence ? (
+          <div className="sentence-card">
+            <div className="sentence-card-header">
+              <p className="sentence-kicker">Example sentence</p>
+              <button
+                aria-controls={`sentence-detail-${word.id}`}
+                aria-expanded={isSentenceExpanded}
+                className="sentence-toggle"
+                type="button"
+                onClick={() => setIsSentenceExpanded((expanded) => !expanded)}
+              >
+                {isSentenceExpanded ? 'Hide pinyin' : 'Show pinyin'}
+              </button>
+            </div>
+            <p className="sentence-hanzi">{word.exampleSentence.hanzi}</p>
+            {isSentenceExpanded ? (
+              <div className="sentence-detail" id={`sentence-detail-${word.id}`}>
+                <p className="sentence-pinyin">{word.exampleSentence.pinyin}</p>
+                <p className="sentence-meaning">{word.exampleSentence.meaning}</p>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -255,23 +681,25 @@ function DetailModal({
           >
             {audioAvailable ? 'Play audio' : 'Audio later'}
           </button>
-          <button
-            className={status === 'learning' ? 'status-action active learning' : 'status-action'}
-            type="button"
-            onClick={() => onSetStatus(word.id, 'learning')}
-          >
-            Learning
-          </button>
-          <button
-            className={status === 'know' ? 'status-action active know' : 'status-action'}
-            type="button"
-            onClick={() => onSetStatus(word.id, 'know')}
-          >
-            Know
-          </button>
-          <button className="status-action muted" type="button" onClick={() => onClearStatus(word.id)}>
-            Clear
-          </button>
+          <div className="modal-status-actions">
+            <button
+              className={status === 'learning' ? 'status-action active learning' : 'status-action'}
+              type="button"
+              onClick={() => onSetStatus(word.id, 'learning')}
+            >
+              Learning
+            </button>
+            <button
+              className={status === 'know' ? 'status-action active know' : 'status-action'}
+              type="button"
+              onClick={() => onSetStatus(word.id, 'know')}
+            >
+              Know
+            </button>
+            <button className="status-action muted" type="button" onClick={() => onClearStatus(word.id)}>
+              Clear
+            </button>
+          </div>
         </div>
 
         {audioNote ? <p className="speech-note">{audioNote}</p> : null}

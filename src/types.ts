@@ -11,6 +11,12 @@ export type HskLevel = 1 | 2 | 3 | 4 | 5 | 6;
 
 export type WordStatus = 'learning' | 'know';
 
+export interface ExampleSentence {
+  hanzi: string;
+  pinyin: string;
+  meaning: string;
+}
+
 export interface HskWord {
   id: string;
   level?: HskLevel;
@@ -18,6 +24,7 @@ export interface HskWord {
   pinyin: string;
   meaning: string;
   cluster: ClusterId;
+  exampleSentence?: ExampleSentence;
   examples?: string[];
 }
 
