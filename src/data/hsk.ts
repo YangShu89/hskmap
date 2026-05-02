@@ -4,6 +4,7 @@ import { HSK2_SENTENCES } from './hsk2Sentences';
 import { HSK3_SENTENCES } from './hsk3Sentences';
 import { HSK4_SENTENCES } from './hsk4Sentences';
 import { HSK5_SENTENCES } from './hsk5Sentences';
+import { HSK6_SENTENCES } from './hsk6Sentences';
 import { HSK5_RAW, HSK6_RAW } from './hsk56';
 import type { ClusterId, HskLevel, HskWord } from '../types';
 
@@ -1429,10 +1430,10 @@ const VERB_KEYWORDS = [
   'worry',
 ];
 
-function rawToWords(raw: string): RawWord[] {
-  return raw
-    .trim()
-    .split('\n')
+function rawToWords(raw: string | string[]): RawWord[] {
+  const lines = Array.isArray(raw) ? raw : raw.trim().split('\n');
+
+  return lines
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
@@ -1494,7 +1495,7 @@ function slugify(value: string) {
     .toLowerCase();
 }
 
-function buildWords(level: HskLevel, raw: string): HskWord[] {
+function buildWords(level: HskLevel, raw: string | string[]): HskWord[] {
   return rawToWords(raw).map((word, index) => ({
     ...word,
     cluster: clusterFor(word),
@@ -1525,7 +1526,10 @@ export const HSK5_WORDS = buildWords(5, HSK5_RAW).map((word) => ({
   ...word,
   exampleSentence: HSK5_SENTENCES[word.id],
 }));
-export const HSK6_WORDS = buildWords(6, HSK6_RAW);
+export const HSK6_WORDS = buildWords(6, HSK6_RAW).map((word) => ({
+  ...word,
+  exampleSentence: HSK6_SENTENCES[word.id],
+}));
 
 export const HSK_WORDS_BY_LEVEL: Record<HskLevel, HskWord[]> = {
   1: HSK1_LEVEL_WORDS,

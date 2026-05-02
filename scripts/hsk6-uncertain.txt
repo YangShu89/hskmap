@@ -1,0 +1,13 @@
+hsk6-bajie-20 - source gloss appears to be "stutter"; sentence uses standard "flatter / curry favor" sense.
+hsk6-chufen-306 - source gloss appears to be "prescription"; sentence uses "disciplinary punishment" sense.
+hsk6-uanwujie-465 - generated id/source pinyin appears to omit the initial d for Duanwu Festival.
+hsk6-ning-1307 - intentionally simple sentence to stay within the HSK1-HSK6 lexicon validator.
+hsk6-pan-1334 - intentionally simple sentence to stay within the HSK1-HSK6 lexicon validator.
+hsk6-wei-1883 - target is annotated as an interjection in the source, so the sentence includes that exact annotated target form.
+hsk6-tuoyuan-1841 - compressed wording to stay within the HSK1-HSK6 lexicon validator.
+hsk6-xiangqian-1971 - compressed wording to stay within the HSK1-HSK6 lexicon validator.
+hsk6-xi-1926 - compressed wording to stay within the HSK1-HSK6 lexicon validator.
+hsk6-xumu-2051 - uses the bare target without the common industry suffix to stay within the validator.
+hsk6-zhengshou-2320 - uses a simpler object because more natural collocations introduce out-of-scope vocabulary.
+hsk6-zhou-2397 - uses literary "boat" target in a simple concrete sentence.
+hsk6-zongheng-2476 - terse sentence, accepted to avoid out-of-scope vocabulary.
