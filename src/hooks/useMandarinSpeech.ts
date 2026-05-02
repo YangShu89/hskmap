@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 function getVoices(): SpeechSynthesisVoice[] {
   if (!('speechSynthesis' in window)) {
@@ -37,10 +37,14 @@ function pickMandarinVoice(voices: SpeechSynthesisVoice[]) {
 export function useMandarinSpeech() {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [lastError, setLastError] = useState<string | null>(null);
-  const supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
+  const [sourceMessage, setSourceMessage] = useState<string | null>(null);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const browserSpeechSupported = typeof window !== 'undefined' && 'speechSynthesis' in window;
+  const audioElementSupported = typeof window !== 'undefined' && 'Audio' in window;
+  const supported = browserSpeechSupported || audioElementSupported;
 
   useEffect(() => {
-    if (!supported) {
+    if (!browserSpeechSupported) {
       return undefined;
     }
 
@@ -54,7 +58,7 @@ export function useMandarinSpeech() {
       voiceTimers.forEach((timer) => window.clearTimeout(timer));
       window.speechSynthesis.removeEventListener('voiceschanged', updateVoices);
     };
-  }, [supported]);
+  }, [browserSpeechSupported]);
 
   const mandarinVoice = useMemo(() => {
     const bestVoice = pickMandarinVoice(voices);
@@ -63,11 +67,15 @@ export function useMandarinSpeech() {
 
   const message = useMemo(() => {
     if (!supported) {
-      return 'Speech synthesis is not available in this browser.';
+      return 'Audio playback is not available in this browser.';
     }
 
     if (lastError) {
       return lastError;
+    }
+
+    if (sourceMessage) {
+      return sourceMessage;
     }
 
     if (voices.length > 0 && !mandarinVoice) {
@@ -75,39 +83,93 @@ export function useMandarinSpeech() {
     }
 
     return null;
-  }, [lastError, mandarinVoice, supported, voices.length]);
+  }, [lastError, mandarinVoice, sourceMessage, supported, voices.length]);
+
+  const stopCurrentAudio = useCallback(() => {
+    if (!currentAudioRef.current) {
+      return;
+    }
+
+    currentAudioRef.current.pause();
+    currentAudioRef.current.removeAttribute('src');
+    currentAudioRef.current.load();
+    currentAudioRef.current = null;
+  }, []);
 
   const speak = useCallback(
-    (text: string) => {
-      if (!supported) {
+    (text: string, audioSrc?: string) => {
+      if (!supported || typeof window === 'undefined') {
         return;
       }
 
       setLastError(null);
-      window.speechSynthesis.cancel();
+      setSourceMessage(null);
+      stopCurrentAudio();
 
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
+      if (browserSpeechSupported) {
+        window.speechSynthesis.cancel();
       }
 
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'zh-CN';
-      utterance.rate = 0.82;
-      utterance.pitch = 1;
-      utterance.volume = 1;
-      utterance.onerror = (event) => {
-        setLastError(`Audio could not play: ${event.error}.`);
+      const speakWithBrowserVoice = () => {
+        if (!browserSpeechSupported) {
+          setLastError('Custom audio could not play, and speech synthesis is not available in this browser.');
+          return;
+        }
+
+        setSourceMessage(audioSrc ? 'Using browser fallback audio.' : 'Using browser audio.');
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'zh-CN';
+        utterance.rate = 0.82;
+        utterance.pitch = 1;
+        utterance.volume = 1;
+        utterance.onerror = (event) => {
+          setLastError(`Audio could not play: ${event.error}.`);
+        };
+
+        if (mandarinVoice) {
+          utterance.voice = mandarinVoice;
+          utterance.lang = mandarinVoice.lang || 'zh-CN';
+        }
+
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
+
+        window.speechSynthesis.speak(utterance);
+        window.setTimeout(() => window.speechSynthesis.resume(), 0);
       };
 
-      if (mandarinVoice) {
-        utterance.voice = mandarinVoice;
-        utterance.lang = mandarinVoice.lang || 'zh-CN';
+      if (audioSrc && audioElementSupported) {
+        const audio = new Audio(audioSrc);
+        currentAudioRef.current = audio;
+        audio.onended = () => {
+          if (currentAudioRef.current === audio) {
+            currentAudioRef.current = null;
+          }
+        };
+        audio.onplay = () => {
+          setSourceMessage('Using custom Google Chirp audio.');
+        };
+        audio.onerror = () => {
+          if (currentAudioRef.current === audio) {
+            currentAudioRef.current = null;
+          }
+          speakWithBrowserVoice();
+        };
+
+        void audio.play().catch(() => {
+          if (currentAudioRef.current === audio) {
+            currentAudioRef.current = null;
+          }
+          speakWithBrowserVoice();
+        });
+        return;
       }
 
-      window.speechSynthesis.speak(utterance);
-      window.setTimeout(() => window.speechSynthesis.resume(), 0);
+      speakWithBrowserVoice();
     },
-    [mandarinVoice, supported],
+    [audioElementSupported, browserSpeechSupported, mandarinVoice, stopCurrentAudio, supported],
   );
 
   return { message, supported, speak };

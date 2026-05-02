@@ -178,6 +178,10 @@ function getModalHanziCharacterCount(hanzi: string) {
   return Math.max(Array.from(hanzi.replace(/\s/g, '')).length, 1);
 }
 
+function getWordAudioSrc(word: HskWord) {
+  return word.level && word.level <= 4 ? `/audio/words/${word.id}.mp3` : undefined;
+}
+
 function getWritableCharacters(hanzi: string) {
   return Array.from(hanzi).filter((character) => /[\u3400-\u9fff]/u.test(character));
 }
@@ -1041,7 +1045,7 @@ function App() {
 
   const handleSpeak = useCallback(
     (word: HskWord) => {
-      speech.speak(word.hanzi);
+      speech.speak(word.hanzi, getWordAudioSrc(word));
     },
     [speech],
   );
