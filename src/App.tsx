@@ -15,6 +15,11 @@ interface MapCamera {
   scale: number;
 }
 
+interface VisibleWordGroup {
+  startIndex: number;
+  words: HskWord[];
+}
+
 interface PracticeFeedback {
   completedStrokes: number;
   currentStroke: number;
@@ -90,6 +95,24 @@ function isWordVisible(word: HskWord, search: string, filter: FilterMode, status
 
   const haystack = normalize(`${word.hanzi} ${word.pinyin} ${word.meaning}`);
   return haystack.includes(normalizedSearch) || word.hanzi.includes(search.trim());
+}
+
+function getVisibleWordGroups(selectedView: HskView, visibleWords: HskWord[]): VisibleWordGroup[] {
+  const splitIndex =
+    selectedView === 3
+      ? Math.ceil(visibleWords.length / 2)
+      : selectedView === 4 && visibleWords.length > HSK4_WORD_MAP_SPLIT_INDEX
+        ? HSK4_WORD_MAP_SPLIT_INDEX
+        : 0;
+
+  if (splitIndex <= 0 || splitIndex >= visibleWords.length) {
+    return [{ startIndex: 0, words: visibleWords }];
+  }
+
+  return [
+    { startIndex: 0, words: visibleWords.slice(0, splitIndex) },
+    { startIndex: splitIndex, words: visibleWords.slice(splitIndex) },
+  ];
 }
 
 function getTwoCharacterRows(value: string) {
@@ -612,6 +635,7 @@ function DetailModal({
         aria-modal="true"
         className="word-modal"
         onMouseDown={(event) => event.stopPropagation()}
+        onWheel={(event) => event.stopPropagation()}
         role="dialog"
       >
         <div className="modal-topbar">
@@ -751,6 +775,7 @@ function ResetProgressDialog({
         aria-modal="true"
         className="reset-dialog"
         onMouseDown={(event) => event.stopPropagation()}
+        onWheel={(event) => event.stopPropagation()}
         role="dialog"
       >
         <p className="reset-dialog-kicker">Reset progress</p>
@@ -895,16 +920,11 @@ function App() {
       ? levelOverview.reduce((count, level) => count + level.visibleCount, 0)
       : visibleWords.length;
   const hasVisibleWords = visibleCount > 0;
-  const visibleWordGroups = useMemo(() => {
-    if (selectedView === 4 && visibleWords.length > HSK4_WORD_MAP_SPLIT_INDEX) {
-      return [
-        visibleWords.slice(0, HSK4_WORD_MAP_SPLIT_INDEX),
-        visibleWords.slice(HSK4_WORD_MAP_SPLIT_INDEX),
-      ];
-    }
-
-    return [visibleWords];
-  }, [selectedView, visibleWords]);
+  const isModalOpen = Boolean(selectedWord) || isResetDialogOpen;
+  const visibleWordGroups = useMemo(
+    () => getVisibleWordGroups(selectedView, visibleWords),
+    [selectedView, visibleWords],
+  );
   const isSplitWordGrid = visibleWordGroups.length > 1;
   const tileBaseSize = TILE_BASE_SIZE;
   const levelGridRows = selectedView === 6 ? 30 : selectedView === 5 ? 24 : 6;
@@ -1116,6 +1136,24 @@ function App() {
   }, [progress, selectedWord, words]);
 
   useEffect(() => {
+    if (!isModalOpen) {
+      return;
+    }
+
+    const { overflow, paddingRight } = document.body.style;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
+    return () => {
+      document.body.style.overflow = overflow;
+      document.body.style.paddingRight = paddingRight;
+    };
+  }, [isModalOpen]);
+
+  useEffect(() => {
     const resetCamera = {
       panX: 0,
       panY: 0,
@@ -1311,8 +1349,8 @@ function App() {
                       className="tile-grid level-word-grid"
                       aria-label={
                         isSplitWordGrid
-                          ? `${selectedViewMeta.label} words ${groupIndex * HSK4_WORD_MAP_SPLIT_INDEX + 1}-${
-                              groupIndex * HSK4_WORD_MAP_SPLIT_INDEX + wordGroup.length
+                          ? `${selectedViewMeta.label} words ${wordGroup.startIndex + 1}-${
+                              wordGroup.startIndex + wordGroup.words.length
                             }`
                           : selectedViewMeta.label
                       }
@@ -1323,7 +1361,7 @@ function App() {
                         } as React.CSSProperties
                       }
                     >
-                      {wordGroup.map((word) => (
+                      {wordGroup.words.map((word) => (
                         <TileButton
                           isPulsing={pulsingWordId === word.id}
                           key={word.id}

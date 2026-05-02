@@ -640,6 +640,7 @@ h1 {
   padding: 22px;
   background: rgba(15, 23, 42, 0.58);
   animation: fade-in 160ms ease both;
+  overscroll-behavior: contain;
 }
 
 .reset-dialog-backdrop {
@@ -749,6 +750,7 @@ h1 {
   width: min(720px, 100%);
   max-height: calc(100svh - 44px);
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 28px;
   border-radius: 8px;
   background:
