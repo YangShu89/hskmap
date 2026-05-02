@@ -23,6 +23,7 @@ const MIN_ZOOM = 0.08;
 const MAX_ZOOM = 36;
 const ZOOM_SENSITIVITY = 0.0015;
 const TILE_BASE_SIZE = 74;
+const HSK4_WORD_MAP_SPLIT_INDEX = 300;
 const ALL_WORDS = HSK_LEVEL_OPTIONS.flatMap((level) => HSK_WORDS_BY_LEVEL[level.id]);
 const LEVEL_ACCENTS: Record<HskLevel, string> = {
   1: '#f7b718',
@@ -708,6 +709,79 @@ function DetailModal({
   );
 }
 
+function ResetProgressDialog({
+  label,
+  learningCount,
+  knownCount,
+  totalCount,
+  onCancel,
+  onConfirm,
+}: {
+  label: string;
+  learningCount: number;
+  knownCount: number;
+  totalCount: number;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onCancel();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onCancel]);
+
+  return (
+    <div className="modal-backdrop reset-dialog-backdrop" onMouseDown={onCancel} role="presentation">
+      <section
+        aria-describedby="reset-progress-description"
+        aria-labelledby="reset-progress-title"
+        aria-modal="true"
+        className="reset-dialog"
+        onMouseDown={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <p className="reset-dialog-kicker">Reset progress</p>
+        <h2 id="reset-progress-title">Saved work will be gone</h2>
+        <p id="reset-progress-description">
+          Resetting {label} will permanently remove your saved Know and Learning marks for this
+          study set, including words hidden by search or filters.
+        </p>
+
+        <div className="reset-dialog-summary" aria-label={`${label} saved progress summary`}>
+          <span>
+            <strong>{knownCount}</strong>
+            Know
+          </span>
+          <span>
+            <strong>{learningCount}</strong>
+            Learning
+          </span>
+          <span>
+            <strong>{totalCount}</strong>
+            Words affected
+          </span>
+        </div>
+
+        <p className="reset-dialog-note">This cannot be undone.</p>
+
+        <div className="reset-dialog-actions">
+          <button autoFocus className="reset-dialog-cancel" type="button" onClick={onCancel}>
+            Keep progress
+          </button>
+          <button className="reset-dialog-confirm" type="button" onClick={onConfirm}>
+            Reset progress
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function App() {
   const [selectedView, setSelectedView] = useState<HskView>('all');
   const [search, setSearch] = useState('');
@@ -715,6 +789,7 @@ function App() {
   const [selectedWord, setSelectedWord] = useState<HskWord | null>(null);
   const [pulsingWordId, setPulsingWordId] = useState<string | null>(null);
   const [zoomScale, setZoomScale] = useState(DEFAULT_ZOOM);
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const posterViewportRef = useRef<HTMLDivElement | null>(null);
   const posterBoardRef = useRef<HTMLDivElement | null>(null);
   const zoomRef = useRef(DEFAULT_ZOOM);
@@ -807,6 +882,17 @@ function App() {
       ? levelOverview.reduce((count, level) => count + level.visibleCount, 0)
       : visibleWords.length;
   const hasVisibleWords = visibleCount > 0;
+  const visibleWordGroups = useMemo(() => {
+    if (selectedView === 4 && visibleWords.length > HSK4_WORD_MAP_SPLIT_INDEX) {
+      return [
+        visibleWords.slice(0, HSK4_WORD_MAP_SPLIT_INDEX),
+        visibleWords.slice(HSK4_WORD_MAP_SPLIT_INDEX),
+      ];
+    }
+
+    return [visibleWords];
+  }, [selectedView, visibleWords]);
+  const isSplitWordGrid = visibleWordGroups.length > 1;
   const tileBaseSize = TILE_BASE_SIZE;
   const levelGridRows = selectedView === 6 ? 30 : selectedView === 5 ? 24 : 6;
 
@@ -873,11 +959,17 @@ function App() {
   );
 
   const handleReset = useCallback(() => {
-    const confirmed = window.confirm(`Reset saved ${selectedViewMeta.label} progress?`);
-    if (confirmed) {
-      resetProgress(words.map((word) => word.id));
-    }
-  }, [resetProgress, selectedViewMeta.label, words]);
+    setIsResetDialogOpen(true);
+  }, []);
+
+  const handleCancelReset = useCallback(() => {
+    setIsResetDialogOpen(false);
+  }, []);
+
+  const handleConfirmReset = useCallback(() => {
+    resetProgress(words.map((word) => word.id));
+    setIsResetDialogOpen(false);
+  }, [resetProgress, words]);
 
   const handleSpeak = useCallback(
     (word: HskWord) => {
@@ -1205,26 +1297,38 @@ function App() {
           >
             {hasVisibleWords ? (
               <div className="poster-zoom-space">
-                <div className="poster-board" ref={posterBoardRef}>
-                  <div
-                    className="tile-grid level-word-grid"
-                    aria-label={selectedViewMeta.label}
-                    style={
-                      {
-                        '--level-rows': levelGridRows,
-                      } as React.CSSProperties
-                    }
-                  >
-                    {visibleWords.map((word) => (
-                      <TileButton
-                        isPulsing={pulsingWordId === word.id}
-                        key={word.id}
-                        onSelect={setSelectedWord}
-                        status={progress[word.id]}
-                        word={word}
-                      />
-                    ))}
-                  </div>
+                <div
+                  className={isSplitWordGrid ? 'poster-board is-split-word-grid' : 'poster-board'}
+                  ref={posterBoardRef}
+                >
+                  {visibleWordGroups.map((wordGroup, groupIndex) => (
+                    <div
+                      className="tile-grid level-word-grid"
+                      aria-label={
+                        isSplitWordGrid
+                          ? `${selectedViewMeta.label} words ${groupIndex * HSK4_WORD_MAP_SPLIT_INDEX + 1}-${
+                              groupIndex * HSK4_WORD_MAP_SPLIT_INDEX + wordGroup.length
+                            }`
+                          : selectedViewMeta.label
+                      }
+                      key={`${selectedViewMeta.label}-${groupIndex}`}
+                      style={
+                        {
+                          '--level-rows': levelGridRows,
+                        } as React.CSSProperties
+                      }
+                    >
+                      {wordGroup.map((word) => (
+                        <TileButton
+                          isPulsing={pulsingWordId === word.id}
+                          key={word.id}
+                          onSelect={setSelectedWord}
+                          status={progress[word.id]}
+                          word={word}
+                        />
+                      ))}
+                    </div>
+                  ))}
                 </div>
               </div>
             ) : (
@@ -1236,6 +1340,17 @@ function App() {
           </div>
         </section>
       )}
+
+      {isResetDialogOpen ? (
+        <ResetProgressDialog
+          label={selectedViewMeta.label}
+          knownCount={stats.known}
+          learningCount={stats.learning}
+          onCancel={handleCancelReset}
+          onConfirm={handleConfirmReset}
+          totalCount={stats.total}
+        />
+      ) : null}
 
       {selectedWord ? (
         <DetailModal

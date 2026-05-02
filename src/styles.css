@@ -440,6 +440,11 @@ h1 {
   padding: 24px;
 }
 
+.poster-board.is-split-word-grid {
+  display: inline-grid;
+  align-items: start;
+}
+
 .poster-zoom-space {
   position: relative;
   display: inline-block;
@@ -571,6 +576,108 @@ h1 {
   padding: 22px;
   background: rgba(15, 23, 42, 0.58);
   animation: fade-in 160ms ease both;
+}
+
+.reset-dialog-backdrop {
+  z-index: 40;
+}
+
+.reset-dialog {
+  width: min(520px, 100%);
+  padding: 28px;
+  border: 1px solid rgba(254, 202, 202, 0.9);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(254, 242, 242, 0.92), rgba(255, 255, 255, 0.96) 44%),
+    #ffffff;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.3);
+  animation: modal-in 180ms ease both;
+}
+
+.reset-dialog .reset-dialog-kicker {
+  margin-bottom: 8px;
+  color: #b91c1c;
+  font-size: 0.78rem;
+  font-weight: 950;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.reset-dialog h2 {
+  margin-bottom: 10px;
+  color: #111827;
+  font-size: clamp(1.9rem, 4vw, 2.65rem);
+  line-height: 1;
+}
+
+.reset-dialog p {
+  color: #475569;
+  font-weight: 760;
+}
+
+.reset-dialog-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.reset-dialog-summary span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  color: #64748b;
+  background: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.reset-dialog-summary strong {
+  color: #0f172a;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.reset-dialog .reset-dialog-note {
+  margin-top: 16px;
+  margin-bottom: 0;
+  color: #991b1b;
+}
+
+.reset-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+
+.reset-dialog-cancel,
+.reset-dialog-confirm {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 7px;
+  font-weight: 950;
+}
+
+.reset-dialog-cancel {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  color: #334155;
+  background: #ffffff;
+}
+
+.reset-dialog-confirm {
+  border: 0;
+  color: #ffffff;
+  background: #dc2626;
+  box-shadow: 0 10px 22px rgba(220, 38, 38, 0.22);
+}
+
+.reset-dialog-confirm:hover {
+  background: #b91c1c;
 }
 
 .word-modal {
@@ -1324,14 +1431,21 @@ h1 {
   }
 
   .modal-actions,
-  .modal-status-actions {
+  .modal-status-actions,
+  .reset-dialog-actions {
     align-items: stretch;
     flex-direction: column;
   }
 
+  .reset-dialog-summary {
+    grid-template-columns: 1fr;
+  }
+
   .modal-status-actions,
   .audio-button,
-  .status-action {
+  .status-action,
+  .reset-dialog-cancel,
+  .reset-dialog-confirm {
     width: 100%;
   }
 
