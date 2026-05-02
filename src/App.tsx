@@ -9,6 +9,12 @@ type FilterMode = 'all' | 'learning' | 'know' | 'unmarked';
 type HskView = HskLevel | 'all';
 type WritingMode = 'watch' | 'practice';
 
+interface MapCamera {
+  panX: number;
+  panY: number;
+  scale: number;
+}
+
 interface PracticeFeedback {
   completedStrokes: number;
   currentStroke: number;
@@ -23,6 +29,7 @@ const MIN_ZOOM = 0.08;
 const MAX_ZOOM = 36;
 const ZOOM_SENSITIVITY = 0.0015;
 const TILE_BASE_SIZE = 74;
+const MIN_VISIBLE_MAP_EDGE = 96;
 const HSK4_WORD_MAP_SPLIT_INDEX = 300;
 const ALL_WORDS = HSK_LEVEL_OPTIONS.flatMap((level) => HSK_WORDS_BY_LEVEL[level.id]);
 const LEVEL_ACCENTS: Record<HskLevel, string> = {
@@ -220,6 +227,7 @@ function TileButton({
   return (
     <button
       className={className}
+      draggable={false}
       type="button"
       onClick={() => onSelect(word)}
       aria-label={`${word.hanzi}, ${word.pinyin}, ${word.meaning}`}
@@ -788,14 +796,19 @@ function App() {
   const [filter, setFilter] = useState<FilterMode>('all');
   const [selectedWord, setSelectedWord] = useState<HskWord | null>(null);
   const [pulsingWordId, setPulsingWordId] = useState<string | null>(null);
-  const [zoomScale, setZoomScale] = useState(DEFAULT_ZOOM);
+  const [mapCamera, setMapCamera] = useState<MapCamera>({
+    panX: 0,
+    panY: 0,
+    scale: DEFAULT_ZOOM,
+  });
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const posterViewportRef = useRef<HTMLDivElement | null>(null);
   const posterBoardRef = useRef<HTMLDivElement | null>(null);
-  const zoomRef = useRef(DEFAULT_ZOOM);
-  const pendingWheelDeltaRef = useRef(0);
-  const zoomFrameRef = useRef(0);
-  const zoomPointerRef = useRef({ x: 0, y: 0 });
+  const mapCameraRef = useRef<MapCamera>({
+    panX: 0,
+    panY: 0,
+    scale: DEFAULT_ZOOM,
+  });
   const didDragRef = useRef(false);
   const dragStateRef = useRef({
     active: false,
@@ -803,8 +816,8 @@ function App() {
     pointerId: 0,
     startX: 0,
     startY: 0,
-    scrollLeft: 0,
-    scrollTop: 0,
+    startPanX: 0,
+    startPanY: 0,
     didMove: false,
   });
   const { progress, setWordStatus, clearWordStatus, resetProgress } = useProgress();
@@ -896,48 +909,48 @@ function App() {
   const tileBaseSize = TILE_BASE_SIZE;
   const levelGridRows = selectedView === 6 ? 30 : selectedView === 5 ? 24 : 6;
 
-  const applyZoomScale = useCallback(
-    (nextZoom = zoomRef.current) => {
-      const viewport = posterViewportRef.current;
-      if (!viewport) {
-        return;
-      }
+  const constrainMapCamera = useCallback((camera: MapCamera) => {
+    const viewport = posterViewportRef.current;
+    const board = posterBoardRef.current;
+    if (!viewport || !board) {
+      return camera;
+    }
 
-      viewport.style.setProperty('--tile-size', formatPixelValue(tileBaseSize * nextZoom));
+    const scale = clampZoom(camera.scale);
+    const renderedTileSize =
+      Number.parseFloat(window.getComputedStyle(viewport).getPropertyValue('--tile-size')) ||
+      tileBaseSize * mapCameraRef.current.scale;
+    const renderedScale = Math.max(renderedTileSize / tileBaseSize, 0.001);
+    const scaledWidth = (board.offsetWidth / renderedScale) * scale;
+    const scaledHeight = (board.offsetHeight / renderedScale) * scale;
+    const viewportWidth = viewport.clientWidth;
+    const viewportHeight = viewport.clientHeight;
+    const clampAxis = (pan: number, viewportSize: number, contentSize: number) => {
+      const visibleEdge = Math.min(
+        contentSize,
+        Math.max(MIN_VISIBLE_MAP_EDGE, Math.min(viewportSize * 0.2, 180)),
+      );
+      const minPan = visibleEdge - contentSize;
+      const maxPan = viewportSize - visibleEdge;
+
+      return Math.min(maxPan, Math.max(minPan, pan));
+    };
+
+    return {
+      panX: clampAxis(camera.panX, viewportWidth, scaledWidth),
+      panY: clampAxis(camera.panY, viewportHeight, scaledHeight),
+      scale,
+    };
+  }, [tileBaseSize]);
+
+  const commitMapCamera = useCallback(
+    (nextCamera: MapCamera) => {
+      const constrainedCamera = constrainMapCamera(nextCamera);
+      mapCameraRef.current = constrainedCamera;
+      setMapCamera(constrainedCamera);
+      return constrainedCamera;
     },
-    [tileBaseSize],
-  );
-
-  const setZoomAtViewportPoint = useCallback(
-    (nextZoomValue: number, anchorPoint: { x: number; y: number }) => {
-      const viewport = posterViewportRef.current;
-      if (!viewport) {
-        return;
-      }
-
-      const currentZoom = Math.max(zoomRef.current, 0.001);
-      const nextZoom = clampZoom(nextZoomValue);
-      if (Math.abs(nextZoom - currentZoom) < 0.0005) {
-        return;
-      }
-
-      const board = posterBoardRef.current;
-      const boardStyle = board ? window.getComputedStyle(board) : null;
-      const boardPaddingLeft = boardStyle ? Number.parseFloat(boardStyle.paddingLeft) || 0 : 0;
-      const boardPaddingTop = boardStyle ? Number.parseFloat(boardStyle.paddingTop) || 0 : 0;
-      const currentTileSize = tileBaseSize * currentZoom;
-      const nextTileSize = tileBaseSize * nextZoom;
-      const gridX = (viewport.scrollLeft + anchorPoint.x - boardPaddingLeft) / currentTileSize;
-      const gridY = (viewport.scrollTop + anchorPoint.y - boardPaddingTop) / currentTileSize;
-
-      zoomRef.current = nextZoom;
-      setZoomScale(nextZoom);
-      applyZoomScale(nextZoom);
-
-      viewport.scrollLeft = boardPaddingLeft + gridX * nextTileSize - anchorPoint.x;
-      viewport.scrollTop = boardPaddingTop + gridY * nextTileSize - anchorPoint.y;
-    },
-    [applyZoomScale, tileBaseSize],
+    [constrainMapCamera],
   );
 
   const handleSetStatus = useCallback(
@@ -981,53 +994,47 @@ function App() {
   const handleMapWheel = useCallback(
     (event: React.WheelEvent<HTMLElement>) => {
       event.preventDefault();
+      event.stopPropagation();
       const viewport = event.currentTarget;
       const rect = viewport.getBoundingClientRect();
-      zoomPointerRef.current = {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top,
-      };
-      pendingWheelDeltaRef.current += event.deltaY;
-
-      if (zoomFrameRef.current) {
+      const cursorX = event.clientX - rect.left - viewport.clientLeft;
+      const cursorY = event.clientY - rect.top - viewport.clientTop;
+      const currentCamera = mapCameraRef.current;
+      const currentScale = Math.max(currentCamera.scale, 0.001);
+      const nextScale = clampZoom(currentScale * Math.exp(-event.deltaY * ZOOM_SENSITIVITY));
+      if (Math.abs(nextScale - currentScale) < 0.0005) {
         return;
       }
 
-      zoomFrameRef.current = window.requestAnimationFrame(() => {
-        zoomFrameRef.current = 0;
+      const mapX = (cursorX - currentCamera.panX) / currentScale;
+      const mapY = (cursorY - currentCamera.panY) / currentScale;
 
-        const delta = pendingWheelDeltaRef.current;
-        pendingWheelDeltaRef.current = 0;
-        const currentZoom = zoomRef.current;
-        const nextZoom = Math.min(
-          MAX_ZOOM,
-          Math.max(MIN_ZOOM, currentZoom * Math.exp(-delta * ZOOM_SENSITIVITY)),
-        );
-
-        if (Math.abs(nextZoom - currentZoom) < 0.001) {
-          return;
-        }
-
-        setZoomAtViewportPoint(nextZoom, zoomPointerRef.current);
+      commitMapCamera({
+        panX: cursorX - mapX * nextScale,
+        panY: cursorY - mapY * nextScale,
+        scale: nextScale,
       });
     },
-    [setZoomAtViewportPoint],
+    [commitMapCamera],
   );
+
+  const handleMapDragStart = useCallback((event: React.DragEvent<HTMLElement>) => {
+    event.preventDefault();
+  }, []);
 
   const handleMapPointerDown = useCallback((event: React.PointerEvent<HTMLElement>) => {
     if (event.button !== 0) {
       return;
     }
 
-    const viewport = event.currentTarget;
     dragStateRef.current = {
       active: true,
       captured: false,
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
-      scrollLeft: viewport.scrollLeft,
-      scrollTop: viewport.scrollTop,
+      startPanX: mapCameraRef.current.panX,
+      startPanY: mapCameraRef.current.panY,
       didMove: false,
     };
   }, []);
@@ -1052,10 +1059,18 @@ function App() {
     }
 
     if (dragState.didMove) {
-      event.currentTarget.scrollLeft = dragState.scrollLeft - deltaX;
-      event.currentTarget.scrollTop = dragState.scrollTop - deltaY;
+      event.preventDefault();
+      const nextCamera = commitMapCamera({
+        ...mapCameraRef.current,
+        panX: dragState.startPanX + deltaX,
+        panY: dragState.startPanY + deltaY,
+      });
+      dragState.startX = event.clientX;
+      dragState.startY = event.clientY;
+      dragState.startPanX = nextCamera.panX;
+      dragState.startPanY = nextCamera.panY;
     }
-  }, []);
+  }, [commitMapCamera]);
 
   const handleMapPointerEnd = useCallback((event: React.PointerEvent<HTMLElement>) => {
     const dragState = dragStateRef.current;
@@ -1101,31 +1116,18 @@ function App() {
   }, [progress, selectedWord, words]);
 
   useEffect(() => {
-    const viewport = posterViewportRef.current;
-    if (!viewport) {
-      return;
-    }
+    const resetCamera = {
+      panX: 0,
+      panY: 0,
+      scale: DEFAULT_ZOOM,
+    };
+    mapCameraRef.current = resetCamera;
+    setMapCamera(resetCamera);
+  }, [selectedView]);
 
-    zoomRef.current = DEFAULT_ZOOM;
-    setZoomScale(DEFAULT_ZOOM);
-    pendingWheelDeltaRef.current = 0;
-    if (zoomFrameRef.current) {
-      window.cancelAnimationFrame(zoomFrameRef.current);
-      zoomFrameRef.current = 0;
-    }
-    viewport.style.setProperty('--tile-size', formatPixelValue(tileBaseSize));
-    viewport.scrollLeft = 0;
-    viewport.scrollTop = 0;
-  }, [selectedView, tileBaseSize]);
-
-  useEffect(
-    () => () => {
-      if (zoomFrameRef.current) {
-        window.cancelAnimationFrame(zoomFrameRef.current);
-      }
-    },
-    [],
-  );
+  useEffect(() => {
+    commitMapCamera(mapCameraRef.current);
+  }, [commitMapCamera, levelGridRows, visibleCount]);
 
   return (
     <main className="app-shell">
@@ -1282,6 +1284,7 @@ function App() {
             ref={posterViewportRef}
             className="poster-scroll"
             onClickCapture={handleMapClickCapture}
+            onDragStart={handleMapDragStart}
             onPointerCancel={handleMapPointerEnd}
             onPointerDown={handleMapPointerDown}
             onPointerMove={handleMapPointerMove}
@@ -1291,7 +1294,9 @@ function App() {
             role="region"
             style={
               {
-                '--tile-size': formatPixelValue(tileBaseSize * zoomScale),
+                '--map-pan-x': formatPixelValue(mapCamera.panX),
+                '--map-pan-y': formatPixelValue(mapCamera.panY),
+                '--tile-size': formatPixelValue(tileBaseSize * mapCamera.scale),
               } as React.CSSProperties
             }
           >
