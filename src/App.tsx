@@ -605,6 +605,8 @@ function DetailModal({
 }) {
   const [isAnswerVisible, setIsAnswerVisible] = useState(false);
   const [isSentenceExpanded, setIsSentenceExpanded] = useState(false);
+  const modalScrollRef = useRef<HTMLDivElement | null>(null);
+  const sentenceCardRef = useRef<HTMLDivElement | null>(null);
   const hanziCharacterCount = getModalHanziCharacterCount(word.hanzi);
   const flashcardStyle = {
     '--modal-hanzi-count': hanziCharacterCount,
@@ -625,6 +627,35 @@ function DetailModal({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
+
+  useEffect(() => {
+    if (!isSentenceExpanded) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      const scrollContainer = modalScrollRef.current;
+      const sentenceCard = sentenceCardRef.current;
+
+      if (!scrollContainer || !sentenceCard) {
+        return;
+      }
+
+      const scrollContainerRect = scrollContainer.getBoundingClientRect();
+      const sentenceCardRect = sentenceCard.getBoundingClientRect();
+      const scrollDistance = sentenceCardRect.bottom - scrollContainerRect.bottom + 24;
+
+      if (scrollDistance > 0) {
+        scrollContainer.scrollBy({
+          top: scrollDistance,
+          behavior: 'smooth',
+        });
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [isSentenceExpanded]);
+
   const audioNote = audioAvailable ? speechMessage : 'Audio for HSK 5-6 will be added later.';
   const hasWritingAnimation = WRITING_PRACTICE_LEVELS.has(word.level ?? 1);
 
@@ -644,98 +675,102 @@ function DetailModal({
           </button>
         </div>
 
-        <h2 className="sr-only" id="word-detail-title">
-          {word.hanzi}
-        </h2>
+        <div className="modal-scroll" ref={modalScrollRef}>
+          <h2 className="sr-only" id="word-detail-title">
+            {word.hanzi}
+          </h2>
 
-        <button
-          aria-controls="word-detail-answer"
-          aria-expanded={isAnswerVisible}
-          className={isAnswerVisible ? 'flashcard-card is-revealed' : 'flashcard-card'}
-          onClick={() => setIsAnswerVisible((visible) => !visible)}
-          style={flashcardStyle}
-          type="button"
-        >
-          <span className="flashcard-face flashcard-front" aria-hidden={isAnswerVisible}>
-            <span className="modal-kicker">HSK {word.level ?? 1} Word</span>
-            <span className="modal-hanzi">{word.hanzi}</span>
-            <span className="flashcard-cue">Reveal answer</span>
-          </span>
-          <span className="flashcard-face flashcard-back" aria-hidden={!isAnswerVisible}>
-            <span className="modal-kicker">HSK {word.level ?? 1} Word</span>
-            <span className="modal-meaning">{word.meaning}</span>
-            <span className="modal-pinyin">{word.pinyin}</span>
-            <span className="flashcard-cue">Hide answer</span>
-          </span>
-        </button>
+          <button
+            aria-controls="word-detail-answer"
+            aria-expanded={isAnswerVisible}
+            className={isAnswerVisible ? 'flashcard-card is-revealed' : 'flashcard-card'}
+            onClick={() => setIsAnswerVisible((visible) => !visible)}
+            style={flashcardStyle}
+            type="button"
+          >
+            <span className="flashcard-face flashcard-front" aria-hidden={isAnswerVisible}>
+              <span className="modal-kicker">HSK {word.level ?? 1} Word</span>
+              <span className="modal-hanzi">{word.hanzi}</span>
+              <span className="flashcard-cue">Reveal answer</span>
+            </span>
+            <span className="flashcard-face flashcard-back" aria-hidden={!isAnswerVisible}>
+              <span className="modal-kicker">HSK {word.level ?? 1} Word</span>
+              <span className="modal-meaning">{word.meaning}</span>
+              <span className="modal-pinyin">{word.pinyin}</span>
+              <span className="flashcard-cue">Hide answer</span>
+            </span>
+          </button>
 
-        <div className={isAnswerVisible ? 'modal-answer is-visible' : 'modal-answer'} id="word-detail-answer">
-          {word.examples?.length ? (
-            <div className="examples">
-              {word.examples.map((example) => (
-                <p key={example}>{example}</p>
-              ))}
+          <div className={isAnswerVisible ? 'modal-answer is-visible' : 'modal-answer'} id="word-detail-answer">
+            {word.examples?.length ? (
+              <div className="examples">
+                {word.examples.map((example) => (
+                  <p key={example}>{example}</p>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          {hasWritingAnimation ? <HanziWriterCard hanzi={word.hanzi} /> : null}
+
+          {word.exampleSentence ? (
+            <div className="sentence-card" ref={sentenceCardRef}>
+              <div className="sentence-card-header">
+                <p className="sentence-kicker">Example sentence</p>
+                <button
+                  aria-controls={`sentence-detail-${word.id}`}
+                  aria-expanded={isSentenceExpanded}
+                  className="sentence-toggle"
+                  type="button"
+                  onClick={() => setIsSentenceExpanded((expanded) => !expanded)}
+                >
+                  {isSentenceExpanded ? 'Hide pinyin' : 'Show pinyin'}
+                </button>
+              </div>
+              <p className="sentence-hanzi">{word.exampleSentence.hanzi}</p>
+              {isSentenceExpanded ? (
+                <div className="sentence-detail" id={`sentence-detail-${word.id}`}>
+                  <p className="sentence-pinyin">{word.exampleSentence.pinyin}</p>
+                  <p className="sentence-meaning">{word.exampleSentence.meaning}</p>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
 
-        {hasWritingAnimation ? <HanziWriterCard hanzi={word.hanzi} /> : null}
-
-        {word.exampleSentence ? (
-          <div className="sentence-card">
-            <div className="sentence-card-header">
-              <p className="sentence-kicker">Example sentence</p>
+        <div className="modal-footer">
+          <div className="modal-actions">
+            <button
+              className="audio-button"
+              disabled={!speechSupported || !audioAvailable}
+              type="button"
+              onClick={() => onSpeak(word)}
+            >
+              {audioAvailable ? 'Play audio' : 'Audio later'}
+            </button>
+            <div className="modal-status-actions">
               <button
-                aria-controls={`sentence-detail-${word.id}`}
-                aria-expanded={isSentenceExpanded}
-                className="sentence-toggle"
+                className={status === 'learning' ? 'status-action active learning' : 'status-action'}
                 type="button"
-                onClick={() => setIsSentenceExpanded((expanded) => !expanded)}
+                onClick={() => onSetStatus(word.id, 'learning')}
               >
-                {isSentenceExpanded ? 'Hide pinyin' : 'Show pinyin'}
+                Learning
+              </button>
+              <button
+                className={status === 'know' ? 'status-action active know' : 'status-action'}
+                type="button"
+                onClick={() => onSetStatus(word.id, 'know')}
+              >
+                Know
+              </button>
+              <button className="status-action muted" type="button" onClick={() => onClearStatus(word.id)}>
+                Clear
               </button>
             </div>
-            <p className="sentence-hanzi">{word.exampleSentence.hanzi}</p>
-            {isSentenceExpanded ? (
-              <div className="sentence-detail" id={`sentence-detail-${word.id}`}>
-                <p className="sentence-pinyin">{word.exampleSentence.pinyin}</p>
-                <p className="sentence-meaning">{word.exampleSentence.meaning}</p>
-              </div>
-            ) : null}
           </div>
-        ) : null}
 
-        <div className="modal-actions">
-          <button
-            className="audio-button"
-            disabled={!speechSupported || !audioAvailable}
-            type="button"
-            onClick={() => onSpeak(word)}
-          >
-            {audioAvailable ? 'Play audio' : 'Audio later'}
-          </button>
-          <div className="modal-status-actions">
-            <button
-              className={status === 'learning' ? 'status-action active learning' : 'status-action'}
-              type="button"
-              onClick={() => onSetStatus(word.id, 'learning')}
-            >
-              Learning
-            </button>
-            <button
-              className={status === 'know' ? 'status-action active know' : 'status-action'}
-              type="button"
-              onClick={() => onSetStatus(word.id, 'know')}
-            >
-              Know
-            </button>
-            <button className="status-action muted" type="button" onClick={() => onClearStatus(word.id)}>
-              Clear
-            </button>
-          </div>
+          {audioNote ? <p className="speech-note">{audioNote}</p> : null}
         </div>
-
-        {audioNote ? <p className="speech-note">{audioNote}</p> : null}
       </section>
     </div>
   );
