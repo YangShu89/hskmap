@@ -70,7 +70,7 @@ input:focus-visible {
 .app-shell:has(.level-overview) .toolbar {
   position: relative;
   top: auto;
-  grid-template-columns: minmax(240px, 1fr) auto auto auto;
+  grid-template-columns: minmax(240px, 1fr) auto auto;
   margin-bottom: 14px;
   padding: 10px 12px;
 }
@@ -197,7 +197,7 @@ h1 {
   top: 0;
   z-index: 10;
   display: grid;
-  grid-template-columns: auto minmax(220px, 1fr) auto auto auto;
+  grid-template-columns: auto minmax(220px, 1fr) auto auto;
   gap: 8px;
   align-items: center;
   min-width: 0;
@@ -256,7 +256,11 @@ h1 {
 }
 
 .language-tabs {
-  max-width: min(760px, 42vw);
+  grid-column: 1 / -1;
+  gap: 6px;
+  max-width: 100%;
+  padding: 5px;
+  background: #f8fafc;
 }
 
 .filter-tabs button,
@@ -293,6 +297,34 @@ h1 {
   min-width: 86px;
   padding: 5px 12px;
   text-align: left;
+}
+
+.language-tabs button {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  border: 1px solid transparent;
+  box-shadow: inset 0 -2px 0 transparent;
+}
+
+.language-tabs button:hover {
+  color: var(--language-accent, #111827);
+  background: var(--language-tint, #fff);
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--language-accent, #111827) 45%, transparent);
+}
+
+.language-tabs button.active {
+  color: var(--language-accent, #111827);
+  border-color: color-mix(in srgb, var(--language-accent, #111827) 24%, transparent);
+  background: var(--language-tint, #fff);
+  box-shadow:
+    inset 0 -3px 0 var(--language-accent, #111827),
+    0 4px 12px rgba(15, 23, 42, 0.1);
+}
+
+.language-flag {
+  font-size: 1.1rem;
+  line-height: 1;
 }
 
 .level-tabs button small {
@@ -1586,7 +1618,7 @@ h1 {
   }
 
   .toolbar {
-    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
   }
 
   .level-tabs {
@@ -1602,7 +1634,7 @@ h1 {
   }
 
   .language-tabs {
-    grid-column: 3;
+    grid-column: 1 / -1;
   }
 
   .level-tabs button,
@@ -1612,7 +1644,7 @@ h1 {
   }
 
   .toolbar-meta {
-    grid-column: 4;
+    grid-column: 3;
     justify-content: end;
     flex-wrap: nowrap;
   }

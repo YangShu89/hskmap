@@ -1,0 +1,229 @@
+import type { HskLevel } from '../types';
+
+export type TranslationLanguage =
+  | 'en'
+  | 'es'
+  | 'fr'
+  | 'ru'
+  | 'pt-BR'
+  | 'de'
+  | 'ja'
+  | 'ko'
+  | 'vi'
+  | 'id'
+  | 'ar';
+export type LocalizedLanguage = Exclude<TranslationLanguage, 'en'>;
+
+export type LocalizedMeaningMap = {
+  words: Record<string, string>;
+  sentences: Record<string, string>;
+};
+
+export type LoadedLocalizedMeanings = Partial<
+  Record<HskLevel, Partial<Record<LocalizedLanguage, LocalizedMeaningMap>>>
+>;
+
+type TranslationLoader = () => Promise<LocalizedMeaningMap>;
+
+function bundle<T extends Record<string, unknown>>(
+  loader: () => Promise<T>,
+  wordExport: keyof T,
+  sentenceExport: keyof T,
+): TranslationLoader {
+  return async () => {
+    const module = await loader();
+
+    return {
+      words: module[wordExport] as Record<string, string>,
+      sentences: module[sentenceExport] as Record<string, string>,
+    };
+  };
+}
+
+const TRANSLATION_LOADERS: Partial<Record<HskLevel, Partial<Record<LocalizedLanguage, TranslationLoader>>>> = {
+  1: {
+    ar: bundle(
+      () => import('./hsk1ArabicTranslations'),
+      'HSK1_AR_WORD_MEANINGS',
+      'HSK1_AR_SENTENCE_MEANINGS',
+    ),
+    de: bundle(
+      () => import('./hsk1GermanTranslations'),
+      'HSK1_DE_WORD_MEANINGS',
+      'HSK1_DE_SENTENCE_MEANINGS',
+    ),
+    es: bundle(
+      () => import('./hsk1SpanishTranslations'),
+      'HSK1_ES_WORD_MEANINGS',
+      'HSK1_ES_SENTENCE_MEANINGS',
+    ),
+    fr: bundle(
+      () => import('./hsk1FrenchTranslations'),
+      'HSK1_FR_WORD_MEANINGS',
+      'HSK1_FR_SENTENCE_MEANINGS',
+    ),
+    id: bundle(
+      () => import('./hsk1IndonesianTranslations'),
+      'HSK1_ID_WORD_MEANINGS',
+      'HSK1_ID_SENTENCE_MEANINGS',
+    ),
+    ja: bundle(
+      () => import('./hsk1JapaneseTranslations'),
+      'HSK1_JA_WORD_MEANINGS',
+      'HSK1_JA_SENTENCE_MEANINGS',
+    ),
+    ko: bundle(
+      () => import('./hsk1KoreanTranslations'),
+      'HSK1_KO_WORD_MEANINGS',
+      'HSK1_KO_SENTENCE_MEANINGS',
+    ),
+    'pt-BR': bundle(
+      () => import('./hsk1PortugueseTranslations'),
+      'HSK1_PT_BR_WORD_MEANINGS',
+      'HSK1_PT_BR_SENTENCE_MEANINGS',
+    ),
+    ru: bundle(
+      () => import('./hsk1Translations'),
+      'HSK1_RU_WORD_MEANINGS',
+      'HSK1_RU_SENTENCE_MEANINGS',
+    ),
+    vi: bundle(
+      () => import('./hsk1VietnameseTranslations'),
+      'HSK1_VI_WORD_MEANINGS',
+      'HSK1_VI_SENTENCE_MEANINGS',
+    ),
+  },
+  2: {
+    ar: bundle(
+      () => import('./hsk2ArabicTranslations'),
+      'HSK2_AR_WORD_MEANINGS',
+      'HSK2_AR_SENTENCE_MEANINGS',
+    ),
+    de: bundle(
+      () => import('./hsk2GermanTranslations'),
+      'HSK2_DE_WORD_MEANINGS',
+      'HSK2_DE_SENTENCE_MEANINGS',
+    ),
+    es: bundle(
+      () => import('./hsk2SpanishTranslations'),
+      'HSK2_ES_WORD_MEANINGS',
+      'HSK2_ES_SENTENCE_MEANINGS',
+    ),
+    fr: bundle(
+      () => import('./hsk2FrenchTranslations'),
+      'HSK2_FR_WORD_MEANINGS',
+      'HSK2_FR_SENTENCE_MEANINGS',
+    ),
+    id: bundle(
+      () => import('./hsk2IndonesianTranslations'),
+      'HSK2_ID_WORD_MEANINGS',
+      'HSK2_ID_SENTENCE_MEANINGS',
+    ),
+    ja: bundle(
+      () => import('./hsk2JapaneseTranslations'),
+      'HSK2_JA_WORD_MEANINGS',
+      'HSK2_JA_SENTENCE_MEANINGS',
+    ),
+    ko: bundle(
+      () => import('./hsk2KoreanTranslations'),
+      'HSK2_KO_WORD_MEANINGS',
+      'HSK2_KO_SENTENCE_MEANINGS',
+    ),
+    'pt-BR': bundle(
+      () => import('./hsk2PortugueseTranslations'),
+      'HSK2_PT_BR_WORD_MEANINGS',
+      'HSK2_PT_BR_SENTENCE_MEANINGS',
+    ),
+    ru: bundle(
+      () => import('./hsk2RussianTranslations'),
+      'HSK2_RU_WORD_MEANINGS',
+      'HSK2_RU_SENTENCE_MEANINGS',
+    ),
+    vi: bundle(
+      () => import('./hsk2VietnameseTranslations'),
+      'HSK2_VI_WORD_MEANINGS',
+      'HSK2_VI_SENTENCE_MEANINGS',
+    ),
+  },
+  3: {
+    ar: bundle(
+      () => import('./hsk3ArabicTranslations'),
+      'HSK3_AR_WORD_MEANINGS',
+      'HSK3_AR_SENTENCE_MEANINGS',
+    ),
+    de: bundle(
+      () => import('./hsk3GermanTranslations'),
+      'HSK3_DE_WORD_MEANINGS',
+      'HSK3_DE_SENTENCE_MEANINGS',
+    ),
+    es: bundle(
+      () => import('./hsk3SpanishTranslations'),
+      'HSK3_ES_WORD_MEANINGS',
+      'HSK3_ES_SENTENCE_MEANINGS',
+    ),
+    fr: bundle(
+      () => import('./hsk3FrenchTranslations'),
+      'HSK3_FR_WORD_MEANINGS',
+      'HSK3_FR_SENTENCE_MEANINGS',
+    ),
+    id: bundle(
+      () => import('./hsk3IndonesianTranslations'),
+      'HSK3_ID_WORD_MEANINGS',
+      'HSK3_ID_SENTENCE_MEANINGS',
+    ),
+    ja: bundle(
+      () => import('./hsk3JapaneseTranslations'),
+      'HSK3_JA_WORD_MEANINGS',
+      'HSK3_JA_SENTENCE_MEANINGS',
+    ),
+    ko: bundle(
+      () => import('./hsk3KoreanTranslations'),
+      'HSK3_KO_WORD_MEANINGS',
+      'HSK3_KO_SENTENCE_MEANINGS',
+    ),
+    'pt-BR': bundle(
+      () => import('./hsk3PortugueseTranslations'),
+      'HSK3_PT_BR_WORD_MEANINGS',
+      'HSK3_PT_BR_SENTENCE_MEANINGS',
+    ),
+    ru: bundle(
+      () => import('./hsk3RussianTranslations'),
+      'HSK3_RU_WORD_MEANINGS',
+      'HSK3_RU_SENTENCE_MEANINGS',
+    ),
+    vi: bundle(
+      () => import('./hsk3VietnameseTranslations'),
+      'HSK3_VI_WORD_MEANINGS',
+      'HSK3_VI_SENTENCE_MEANINGS',
+    ),
+  },
+};
+
+const translationCache = new Map<string, Promise<LocalizedMeaningMap>>();
+
+export function getAvailableLocalizedLevels(language: TranslationLanguage) {
+  if (language === 'en') {
+    return [];
+  }
+
+  return Object.entries(TRANSLATION_LOADERS)
+    .filter(([, loaders]) => Boolean(loaders?.[language]))
+    .map(([level]) => Number(level) as HskLevel);
+}
+
+export function loadLocalizedMeanings(level: HskLevel, language: LocalizedLanguage) {
+  const loader = TRANSLATION_LOADERS[level]?.[language];
+  if (!loader) {
+    return Promise.resolve(null);
+  }
+
+  const cacheKey = `${level}:${language}`;
+  const cached = translationCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const loaded = loader();
+  translationCache.set(cacheKey, loaded);
+  return loaded;
+}
