@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "audio:hsk": "node scripts/generateHskAudio.mjs",
-    "audio:hsk1": "node scripts/generateHskAudio.mjs --levels=1"
+    "audio:hsk1": "node scripts/generateHskAudio.mjs --levels=1",
+    "audio:hsk6": "node scripts/generateHskAudio.mjs --levels=6 --kind=words"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.1.2",

@@ -179,7 +179,7 @@ function getModalHanziCharacterCount(hanzi: string) {
 }
 
 function getWordAudioSrc(word: HskWord) {
-  return word.level && word.level <= 4 ? `/audio/words/${word.id}.mp3` : undefined;
+  return word.level && word.level <= 6 ? `/audio/words/${word.id}.mp3` : undefined;
 }
 
 function getWritableCharacters(hanzi: string) {
@@ -589,7 +589,6 @@ function HanziWriterCard({ hanzi }: { hanzi: string }) {
 function DetailModal({
   word,
   status,
-  audioAvailable,
   speechMessage,
   speechSupported,
   onClose,
@@ -599,7 +598,6 @@ function DetailModal({
 }: {
   word: HskWord;
   status?: WordStatus;
-  audioAvailable: boolean;
   speechMessage: string | null;
   speechSupported: boolean;
   onClose: () => void;
@@ -660,7 +658,7 @@ function DetailModal({
     return () => window.cancelAnimationFrame(frameId);
   }, [isSentenceExpanded]);
 
-  const audioNote = audioAvailable ? speechMessage : 'Audio for HSK 5-6 will be added later.';
+  const audioNote = speechMessage;
   const hasWritingAnimation = WRITING_PRACTICE_LEVELS.has(word.level ?? 1);
 
   return (
@@ -746,11 +744,11 @@ function DetailModal({
           <div className="modal-actions">
             <button
               className="audio-button"
-              disabled={!speechSupported || !audioAvailable}
+              disabled={!speechSupported}
               type="button"
               onClick={() => onSpeak(word)}
             >
-              {audioAvailable ? 'Play audio' : 'Audio later'}
+              Play audio
             </button>
             <div className="modal-status-actions">
               <button
@@ -1436,7 +1434,6 @@ function App() {
 
       {selectedWord ? (
         <DetailModal
-          audioAvailable={(selectedWord.level ?? 1) <= 4}
           onClearStatus={handleClearStatus}
           onClose={() => setSelectedWord(null)}
           onSetStatus={handleSetStatus}

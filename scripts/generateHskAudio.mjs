@@ -51,8 +51,8 @@ function parseLevels() {
   const rawLevels = getArgValue('levels') ?? getArgValue('level') ?? '1';
   const levels = rawLevels.split(',').map((value) => Number.parseInt(value.trim(), 10));
 
-  if (levels.some((level) => !Number.isInteger(level) || level < 1 || level > 4)) {
-    throw new Error(`Invalid levels "${rawLevels}". This generator currently supports levels 1, 2, 3, and 4.`);
+  if (levels.some((level) => !Number.isInteger(level) || level < 1 || level > 6)) {
+    throw new Error(`Invalid levels "${rawLevels}". This generator supports levels 1 through 6.`);
   }
 
   return [...new Set(levels)];
@@ -112,9 +112,49 @@ async function parseRawLevelWords(level) {
     .filter(Boolean);
 }
 
+function parseJoinedRawArray(source, exportName) {
+  const startMarker = `export const ${exportName} = [`;
+  const startIndex = source.indexOf(startMarker);
+  if (startIndex === -1) {
+    throw new Error(`Could not find ${exportName}.`);
+  }
+
+  const bodyStart = startIndex + startMarker.length;
+  const bodyEnd = source.indexOf(`].join('\\n');`, bodyStart);
+  if (bodyEnd === -1) {
+    throw new Error(`Could not find end of ${exportName}.`);
+  }
+
+  return [...source.slice(bodyStart, bodyEnd).matchAll(/"((?:\\.|[^"\\])*)"/g)].map((match) =>
+    JSON.parse(`"${match[1]}"`),
+  );
+}
+
+async function parseJoinedRawLevelWords(level) {
+  const source = await readFile(path.join(repoRoot, 'src/data/hsk56.ts'), 'utf8');
+
+  return parseJoinedRawArray(source, `HSK${level}_RAW`)
+    .map((line, index) => {
+      const [hanzi, pinyin] = line.trim().split('|');
+      if (!hanzi) {
+        return undefined;
+      }
+
+      return {
+        id: `hsk${level}-${slugify(pinyin || hanzi)}-${index + 1}`,
+        text: hanzi,
+      };
+    })
+    .filter(Boolean);
+}
+
 async function parseLevelWords(level) {
   if (level === 1) {
     return parseHsk1Words();
+  }
+
+  if (level >= 5) {
+    return parseJoinedRawLevelWords(level);
   }
 
   return parseRawLevelWords(level);
