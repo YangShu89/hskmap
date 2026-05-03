@@ -196,12 +196,22 @@ export function useMandarinSpeech() {
       };
 
       if (audioSrc && audioElementSupported) {
-        const audio = new Audio(audioSrc);
+        const resolvedSrc = new URL(audioSrc, window.location.href).href;
+        const preloadedAudio =
+          preloadedAudioRef.current?.src === resolvedSrc ? preloadedAudioRef.current : null;
+        const audio = preloadedAudio ?? new Audio(audioSrc);
+
+        if (preloadedAudio) {
+          preloadedAudioRef.current = null;
+        }
+
         audio.preload = 'auto';
+        audio.currentTime = 0;
         currentAudioRef.current = audio;
         audio.onended = () => {
           if (currentAudioRef.current === audio) {
             currentAudioRef.current = null;
+            preloadedAudioRef.current = audio;
           }
           if (playbackIdRef.current === playbackId) {
             setIsPlaying(false);

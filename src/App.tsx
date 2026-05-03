@@ -1,12 +1,33 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import HanziWriter, { type StrokeData } from 'hanzi-writer';
 import { HSK_LEVEL_OPTIONS, HSK_WORDS_BY_LEVEL } from './data/hsk';
+import { HSK1_AR_SENTENCE_MEANINGS, HSK1_AR_WORD_MEANINGS } from './data/hsk1ArabicTranslations';
+import { HSK1_FR_SENTENCE_MEANINGS, HSK1_FR_WORD_MEANINGS } from './data/hsk1FrenchTranslations';
+import { HSK1_DE_SENTENCE_MEANINGS, HSK1_DE_WORD_MEANINGS } from './data/hsk1GermanTranslations';
+import { HSK1_ID_SENTENCE_MEANINGS, HSK1_ID_WORD_MEANINGS } from './data/hsk1IndonesianTranslations';
+import { HSK1_JA_SENTENCE_MEANINGS, HSK1_JA_WORD_MEANINGS } from './data/hsk1JapaneseTranslations';
+import { HSK1_KO_SENTENCE_MEANINGS, HSK1_KO_WORD_MEANINGS } from './data/hsk1KoreanTranslations';
+import { HSK1_PT_BR_SENTENCE_MEANINGS, HSK1_PT_BR_WORD_MEANINGS } from './data/hsk1PortugueseTranslations';
+import { HSK1_ES_SENTENCE_MEANINGS, HSK1_ES_WORD_MEANINGS } from './data/hsk1SpanishTranslations';
+import { HSK1_RU_SENTENCE_MEANINGS, HSK1_RU_WORD_MEANINGS } from './data/hsk1Translations';
+import { HSK1_VI_SENTENCE_MEANINGS, HSK1_VI_WORD_MEANINGS } from './data/hsk1VietnameseTranslations';
+import { HSK2_AR_SENTENCE_MEANINGS, HSK2_AR_WORD_MEANINGS } from './data/hsk2ArabicTranslations';
+import { HSK2_FR_SENTENCE_MEANINGS, HSK2_FR_WORD_MEANINGS } from './data/hsk2FrenchTranslations';
+import { HSK2_DE_SENTENCE_MEANINGS, HSK2_DE_WORD_MEANINGS } from './data/hsk2GermanTranslations';
+import { HSK2_ID_SENTENCE_MEANINGS, HSK2_ID_WORD_MEANINGS } from './data/hsk2IndonesianTranslations';
+import { HSK2_JA_SENTENCE_MEANINGS, HSK2_JA_WORD_MEANINGS } from './data/hsk2JapaneseTranslations';
+import { HSK2_KO_SENTENCE_MEANINGS, HSK2_KO_WORD_MEANINGS } from './data/hsk2KoreanTranslations';
+import { HSK2_PT_BR_SENTENCE_MEANINGS, HSK2_PT_BR_WORD_MEANINGS } from './data/hsk2PortugueseTranslations';
+import { HSK2_RU_SENTENCE_MEANINGS, HSK2_RU_WORD_MEANINGS } from './data/hsk2RussianTranslations';
+import { HSK2_ES_SENTENCE_MEANINGS, HSK2_ES_WORD_MEANINGS } from './data/hsk2SpanishTranslations';
+import { HSK2_VI_SENTENCE_MEANINGS, HSK2_VI_WORD_MEANINGS } from './data/hsk2VietnameseTranslations';
 import { useMandarinSpeech } from './hooks/useMandarinSpeech';
 import { useProgress } from './hooks/useProgress';
 import type { HskLevel, HskWord, ProgressMap, WordStatus } from './types';
 
 type FilterMode = 'all' | 'learning' | 'know' | 'unmarked';
 type HskView = HskLevel | 'all';
+type TranslationLanguage = 'en' | 'es' | 'fr' | 'ru' | 'pt-BR' | 'de' | 'ja' | 'ko' | 'vi' | 'id' | 'ar';
 type WritingMode = 'watch' | 'practice';
 
 interface MapCamera {
@@ -113,10 +134,116 @@ const VIEW_OPTIONS: { id: HskView; label: string; description: string }[] = [
 
 const FILTERS: { id: FilterMode; label: string }[] = [
   { id: 'all', label: 'All' },
-  { id: 'learning', label: 'Learning' },
-  { id: 'know', label: 'Know' },
+  { id: 'learning', label: 'Review' },
+  { id: 'know', label: 'Known' },
   { id: 'unmarked', label: 'Unmarked' },
 ];
+const LANGUAGE_STORAGE_KEY = 'hsk-translation-language';
+const LANGUAGE_OPTIONS: { id: TranslationLanguage; label: string }[] = [
+  { id: 'en', label: 'English' },
+  { id: 'es', label: 'Español' },
+  { id: 'fr', label: 'Français' },
+  { id: 'ru', label: 'Русский' },
+  { id: 'pt-BR', label: 'Português' },
+  { id: 'de', label: 'Deutsch' },
+  { id: 'ja', label: '日本語' },
+  { id: 'ko', label: '한국어' },
+  { id: 'vi', label: 'Tiếng Việt' },
+  { id: 'id', label: 'Indonesia' },
+  { id: 'ar', label: 'العربية' },
+];
+type LocalizedMeaningMap = {
+  words: Record<string, string>;
+  sentences: Record<string, string>;
+};
+type LocalizedLanguage = Exclude<TranslationLanguage, 'en'>;
+
+const LOCALIZED_MEANINGS: Partial<Record<HskLevel, Partial<Record<LocalizedLanguage, LocalizedMeaningMap>>>> = {
+  1: {
+    ar: {
+      words: HSK1_AR_WORD_MEANINGS,
+      sentences: HSK1_AR_SENTENCE_MEANINGS,
+    },
+    de: {
+      words: HSK1_DE_WORD_MEANINGS,
+      sentences: HSK1_DE_SENTENCE_MEANINGS,
+    },
+    es: {
+      words: HSK1_ES_WORD_MEANINGS,
+      sentences: HSK1_ES_SENTENCE_MEANINGS,
+    },
+    fr: {
+      words: HSK1_FR_WORD_MEANINGS,
+      sentences: HSK1_FR_SENTENCE_MEANINGS,
+    },
+    id: {
+      words: HSK1_ID_WORD_MEANINGS,
+      sentences: HSK1_ID_SENTENCE_MEANINGS,
+    },
+    ja: {
+      words: HSK1_JA_WORD_MEANINGS,
+      sentences: HSK1_JA_SENTENCE_MEANINGS,
+    },
+    ko: {
+      words: HSK1_KO_WORD_MEANINGS,
+      sentences: HSK1_KO_SENTENCE_MEANINGS,
+    },
+    'pt-BR': {
+      words: HSK1_PT_BR_WORD_MEANINGS,
+      sentences: HSK1_PT_BR_SENTENCE_MEANINGS,
+    },
+    ru: {
+      words: HSK1_RU_WORD_MEANINGS,
+      sentences: HSK1_RU_SENTENCE_MEANINGS,
+    },
+    vi: {
+      words: HSK1_VI_WORD_MEANINGS,
+      sentences: HSK1_VI_SENTENCE_MEANINGS,
+    },
+  },
+  2: {
+    ar: {
+      words: HSK2_AR_WORD_MEANINGS,
+      sentences: HSK2_AR_SENTENCE_MEANINGS,
+    },
+    de: {
+      words: HSK2_DE_WORD_MEANINGS,
+      sentences: HSK2_DE_SENTENCE_MEANINGS,
+    },
+    es: {
+      words: HSK2_ES_WORD_MEANINGS,
+      sentences: HSK2_ES_SENTENCE_MEANINGS,
+    },
+    fr: {
+      words: HSK2_FR_WORD_MEANINGS,
+      sentences: HSK2_FR_SENTENCE_MEANINGS,
+    },
+    id: {
+      words: HSK2_ID_WORD_MEANINGS,
+      sentences: HSK2_ID_SENTENCE_MEANINGS,
+    },
+    ja: {
+      words: HSK2_JA_WORD_MEANINGS,
+      sentences: HSK2_JA_SENTENCE_MEANINGS,
+    },
+    ko: {
+      words: HSK2_KO_WORD_MEANINGS,
+      sentences: HSK2_KO_SENTENCE_MEANINGS,
+    },
+    'pt-BR': {
+      words: HSK2_PT_BR_WORD_MEANINGS,
+      sentences: HSK2_PT_BR_SENTENCE_MEANINGS,
+    },
+    ru: {
+      words: HSK2_RU_WORD_MEANINGS,
+      sentences: HSK2_RU_SENTENCE_MEANINGS,
+    },
+    vi: {
+      words: HSK2_VI_WORD_MEANINGS,
+      sentences: HSK2_VI_SENTENCE_MEANINGS,
+    },
+  },
+};
 const WRITING_PRACTICE_LEVELS = new Set<HskLevel>([1, 2, 3, 4, 5, 6]);
 
 function normalize(value: string) {
@@ -128,7 +255,49 @@ function normalize(value: string) {
     .replace(/v/g, 'u:');
 }
 
-function isWordVisible(word: HskWord, search: string, filter: FilterMode, status?: WordStatus) {
+function getInitialTranslationLanguage(): TranslationLanguage {
+  if (typeof window === 'undefined') {
+    return 'en';
+  }
+
+  const storedLanguage = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
+  return LANGUAGE_OPTIONS.some((option) => option.id === storedLanguage)
+    ? (storedLanguage as TranslationLanguage)
+    : 'en';
+}
+
+function getWordMeaning(word: HskWord, language: TranslationLanguage) {
+  if (language !== 'en' && word.level) {
+    return LOCALIZED_MEANINGS[word.level]?.[language]?.words[word.id] ?? word.meaning;
+  }
+
+  return word.meaning;
+}
+
+function getSentenceMeaning(word: HskWord, language: TranslationLanguage) {
+  if (!word.exampleSentence) {
+    return '';
+  }
+
+  if (language !== 'en' && word.level) {
+    return LOCALIZED_MEANINGS[word.level]?.[language]?.sentences[word.id] ?? word.exampleSentence.meaning;
+  }
+
+  return word.exampleSentence.meaning;
+}
+
+function getSearchableMeaning(word: HskWord, language: TranslationLanguage) {
+  const localizedMeaning = getWordMeaning(word, language);
+  return localizedMeaning === word.meaning ? word.meaning : `${word.meaning} ${localizedMeaning}`;
+}
+
+function isWordVisible(
+  word: HskWord,
+  search: string,
+  filter: FilterMode,
+  status: WordStatus | undefined,
+  language: TranslationLanguage,
+) {
   if (filter === 'learning' && status !== 'learning') {
     return false;
   }
@@ -146,7 +315,7 @@ function isWordVisible(word: HskWord, search: string, filter: FilterMode, status
     return true;
   }
 
-  const haystack = normalize(`${word.hanzi} ${word.pinyin} ${word.meaning}`);
+  const haystack = normalize(`${word.hanzi} ${word.pinyin} ${getSearchableMeaning(word, language)}`);
   return haystack.includes(normalizedSearch) || word.hanzi.includes(search.trim());
 }
 
@@ -400,6 +569,7 @@ function hitTestWordTile(layout: WordMapLayout, camera: MapCamera, viewportX: nu
 
 function TileButton({
   word,
+  meaning,
   status,
   isPulsing,
   onSelect,
@@ -407,6 +577,7 @@ function TileButton({
   style,
 }: {
   word: HskWord;
+  meaning: string;
   status?: WordStatus;
   isPulsing: boolean;
   onSelect: (word: HskWord) => void;
@@ -433,7 +604,7 @@ function TileButton({
       draggable={false}
       type="button"
       onClick={() => onSelect(word)}
-      aria-label={`${word.hanzi}, ${word.pinyin}, ${word.meaning}`}
+      aria-label={`${word.hanzi}, ${word.pinyin}, ${meaning}`}
       style={tileStyle}
     >
       <span className="tile-hanzi">{tileLabel}</span>
@@ -535,6 +706,7 @@ interface CanvasWordMapProps {
   pulsingWordId: string | null;
   levelGridRows: number;
   selectedViewLabel: string;
+  language: TranslationLanguage;
   onSelectWord: (word: HskWord) => void;
 }
 
@@ -545,6 +717,7 @@ function CanvasWordMap({
   pulsingWordId,
   levelGridRows,
   selectedViewLabel,
+  language,
   onSelectWord,
 }: CanvasWordMapProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -897,7 +1070,7 @@ function CanvasWordMap({
             key={word.id}
             type="button"
             onClick={() => onSelectWord(word)}
-            aria-label={`${word.hanzi}, ${word.pinyin}, ${word.meaning}`}
+            aria-label={`${word.hanzi}, ${word.pinyin}, ${getWordMeaning(word, language)}`}
           >
             {word.hanzi}
           </button>
@@ -1230,6 +1403,8 @@ function HanziWriterCard({ hanzi }: { hanzi: string }) {
 
 function DetailModal({
   word,
+  wordMeaning,
+  sentenceMeaning,
   status,
   isAudioPlaying,
   speechMessage,
@@ -1240,6 +1415,8 @@ function DetailModal({
   onClearStatus,
 }: {
   word: HskWord;
+  wordMeaning: string;
+  sentenceMeaning: string;
   status?: WordStatus;
   isAudioPlaying: boolean;
   speechMessage: string | null;
@@ -1349,7 +1526,7 @@ function DetailModal({
             </span>
             <span className="flashcard-face flashcard-back" aria-hidden={!isAnswerVisible}>
               <span className="modal-kicker">HSK {word.level ?? 1} Word</span>
-              <span className="modal-meaning">{word.meaning}</span>
+              <span className="modal-meaning" dir="auto">{wordMeaning}</span>
               <span className="modal-pinyin">{word.pinyin}</span>
               <span className="flashcard-cue">Hide answer</span>
             </span>
@@ -1385,7 +1562,7 @@ function DetailModal({
               {isSentenceExpanded ? (
                 <div className="sentence-detail" id={`sentence-detail-${word.id}`}>
                   <p className="sentence-pinyin">{word.exampleSentence.pinyin}</p>
-                  <p className="sentence-meaning">{word.exampleSentence.meaning}</p>
+                  <p className="sentence-meaning" dir="auto">{sentenceMeaning}</p>
                 </div>
               ) : null}
             </div>
@@ -1478,18 +1655,18 @@ function ResetProgressDialog({
         <p className="reset-dialog-kicker">Reset progress</p>
         <h2 id="reset-progress-title">Saved work will be gone</h2>
         <p id="reset-progress-description">
-          Resetting {label} will permanently remove your saved Know and Learning marks for this
+          Resetting {label} will permanently remove your saved Known and Review marks for this
           study set, including words hidden by search or filters.
         </p>
 
         <div className="reset-dialog-summary" aria-label={`${label} saved progress summary`}>
           <span>
             <strong>{knownCount}</strong>
-            Know
+            Known
           </span>
           <span>
             <strong>{learningCount}</strong>
-            Learning
+            Review
           </span>
           <span>
             <strong>{totalCount}</strong>
@@ -1516,6 +1693,7 @@ function App() {
   const [selectedView, setSelectedView] = useState<HskView>('all');
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterMode>('all');
+  const [language, setLanguage] = useState<TranslationLanguage>(getInitialTranslationLanguage);
   const [selectedWord, setSelectedWord] = useState<HskWord | null>(null);
   const [pulsingWordId, setPulsingWordId] = useState<string | null>(null);
   const [mapCamera, setMapCamera] = useState<MapCamera>({
@@ -1553,6 +1731,10 @@ function App() {
   const words = selectedView === 'all' ? ALL_WORDS : HSK_WORDS_BY_LEVEL[selectedView];
   const selectedViewMeta = VIEW_OPTIONS.find((view) => view.id === selectedView) ?? VIEW_OPTIONS[0];
 
+  useEffect(() => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+  }, [language]);
+
   const stats = useMemo(() => {
     let known = 0;
     let learning = 0;
@@ -1580,14 +1762,14 @@ function App() {
       return [];
     }
 
-    return words.filter((word) => isWordVisible(word, search, filter, progress[word.id]));
-  }, [filter, progress, search, selectedView, words]);
+    return words.filter((word) => isWordVisible(word, search, filter, progress[word.id], language));
+  }, [filter, language, progress, search, selectedView, words]);
 
   const levelOverview = useMemo(() => {
     return HSK_LEVEL_OPTIONS.map((level) => {
       const levelWords = HSK_WORDS_BY_LEVEL[level.id];
       const visibleWords = levelWords.filter((word) =>
-        isWordVisible(word, search, filter, progress[word.id]),
+        isWordVisible(word, search, filter, progress[word.id], language),
       );
       let known = 0;
       let learning = 0;
@@ -1616,7 +1798,7 @@ function App() {
         textColor: LEVEL_TEXT_COLORS[level.id],
       };
     });
-  }, [filter, progress, search]);
+  }, [filter, language, progress, search]);
 
   const visibleCount =
     selectedView === 'all'
@@ -1869,22 +2051,17 @@ function App() {
           <h1>
             {selectedView === 'all'
               ? 'All HSK Level Overview'
-              : `${selectedViewMeta.label} Visual Tile Map`}
+              : `${selectedViewMeta.label} Tile Map`}
           </h1>
-          <p className="hero-copy">
-            {selectedView === 'all'
-              ? 'Choose a level to study, scan progress, and use search or filters to see where matching words live.'
-              : 'A compact word wall for scanning, hearing, zooming, and marking Mandarin vocabulary by level.'}
-          </p>
         </div>
         <div className="progress-card" aria-label="Progress summary">
           <div>
             <span className="progress-number">{stats.known}</span>
-            <span className="progress-label">Know</span>
+            <span className="progress-label">Known</span>
           </div>
           <div>
             <span className="progress-number">{stats.learning}</span>
-            <span className="progress-label">Learning</span>
+            <span className="progress-label">Review</span>
           </div>
           <div>
             <span className="progress-number">{stats.unmarked}</span>
@@ -1917,7 +2094,7 @@ function App() {
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Chinese, pinyin, or English"
+            placeholder="Chinese, pinyin, or translation"
           />
         </label>
 
@@ -1928,6 +2105,19 @@ function App() {
               key={item.id}
               type="button"
               onClick={() => setFilter(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="language-tabs" role="group" aria-label="Translation language">
+          {LANGUAGE_OPTIONS.map((item) => (
+            <button
+              className={language === item.id ? 'active' : ''}
+              key={item.id}
+              type="button"
+              onClick={() => setLanguage(item.id)}
             >
               {item.label}
             </button>
@@ -2014,6 +2204,7 @@ function App() {
         <section className="map-shell" aria-label={`${selectedViewMeta.label} word map`}>
           {shouldUseCanvasMap && hasVisibleWords ? (
             <CanvasWordMap
+              language={language}
               levelGridRows={levelGridRows}
               onSelectWord={setSelectedWord}
               progress={progress}
@@ -2070,6 +2261,7 @@ function App() {
                           <TileButton
                             isPulsing={pulsingWordId === word.id}
                             key={word.id}
+                            meaning={getWordMeaning(word, language)}
                             onSelect={setSelectedWord}
                             status={progress[word.id]}
                             word={word}
@@ -2108,10 +2300,12 @@ function App() {
           onSetStatus={handleSetStatus}
           onSpeak={handleSpeak}
           isAudioPlaying={isAudioPlaying}
+          sentenceMeaning={getSentenceMeaning(selectedWord, language)}
           speechMessage={speechMessage}
           speechSupported={speechSupported}
           status={progress[selectedWord.id]}
           word={selectedWord}
+          wordMeaning={getWordMeaning(selectedWord, language)}
         />
       ) : null}
     </main>
