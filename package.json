@@ -12,15 +12,15 @@
     "audio:hsk6": "node scripts/generateHskAudio.mjs --levels=6 --kind=words"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "^5.1.2",
+    "@vitejs/plugin-react": "^6.0.1",
     "hanzi-writer": "^3.7.3",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3",
-    "typescript": "^5.9.3",
-    "vite": "^7.3.0"
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.10"
   },
   "devDependencies": {
-    "@types/react": "^19.2.7",
+    "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3"
   }
 }

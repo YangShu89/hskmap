@@ -589,6 +589,7 @@ function HanziWriterCard({ hanzi }: { hanzi: string }) {
 function DetailModal({
   word,
   status,
+  isAudioPlaying,
   speechMessage,
   speechSupported,
   onClose,
@@ -598,6 +599,7 @@ function DetailModal({
 }: {
   word: HskWord;
   status?: WordStatus;
+  isAudioPlaying: boolean;
   speechMessage: string | null;
   speechSupported: boolean;
   onClose: () => void;
@@ -743,12 +745,18 @@ function DetailModal({
         <div className="modal-footer">
           <div className="modal-actions">
             <button
-              className="audio-button"
+              aria-busy={isAudioPlaying}
+              className={isAudioPlaying ? 'audio-button is-playing' : 'audio-button'}
               disabled={!speechSupported}
               type="button"
               onClick={() => onSpeak(word)}
             >
-              Play audio
+              <span className="audio-button-visualizer" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </span>
+              <span>Play audio</span>
             </button>
             <div className="modal-status-actions">
               <button
@@ -1438,6 +1446,7 @@ function App() {
           onClose={() => setSelectedWord(null)}
           onSetStatus={handleSetStatus}
           onSpeak={handleSpeak}
+          isAudioPlaying={speech.isPlaying}
           speechMessage={speech.message}
           speechSupported={speech.supported}
           status={progress[selectedWord.id]}

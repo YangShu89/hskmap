@@ -38,7 +38,9 @@ export function useMandarinSpeech() {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [lastError, setLastError] = useState<string | null>(null);
   const [sourceMessage, setSourceMessage] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const playbackIdRef = useRef(0);
   const browserSpeechSupported = typeof window !== 'undefined' && 'speechSynthesis' in window;
   const audioElementSupported = typeof window !== 'undefined' && 'Audio' in window;
   const supported = browserSpeechSupported || audioElementSupported;
@@ -86,6 +88,9 @@ export function useMandarinSpeech() {
   }, [lastError, mandarinVoice, sourceMessage, supported, voices.length]);
 
   const stopCurrentAudio = useCallback(() => {
+    playbackIdRef.current += 1;
+    setIsPlaying(false);
+
     if (!currentAudioRef.current) {
       return;
     }
@@ -105,6 +110,7 @@ export function useMandarinSpeech() {
       setLastError(null);
       setSourceMessage(null);
       stopCurrentAudio();
+      const playbackId = playbackIdRef.current;
 
       if (browserSpeechSupported) {
         window.speechSynthesis.cancel();
@@ -123,8 +129,21 @@ export function useMandarinSpeech() {
         utterance.rate = 0.82;
         utterance.pitch = 1;
         utterance.volume = 1;
+        utterance.onstart = () => {
+          if (playbackIdRef.current === playbackId) {
+            setIsPlaying(true);
+          }
+        };
+        utterance.onend = () => {
+          if (playbackIdRef.current === playbackId) {
+            setIsPlaying(false);
+          }
+        };
         utterance.onerror = (event) => {
-          setLastError(`Audio could not play: ${event.error}.`);
+          if (playbackIdRef.current === playbackId) {
+            setIsPlaying(false);
+            setLastError(`Audio could not play: ${event.error}.`);
+          }
         };
 
         if (mandarinVoice) {
@@ -147,13 +166,21 @@ export function useMandarinSpeech() {
           if (currentAudioRef.current === audio) {
             currentAudioRef.current = null;
           }
+          if (playbackIdRef.current === playbackId) {
+            setIsPlaying(false);
+          }
         };
         audio.onplay = () => {
-          setSourceMessage('Using custom Google Chirp audio.');
+          if (playbackIdRef.current === playbackId) {
+            setIsPlaying(true);
+          }
         };
         audio.onerror = () => {
           if (currentAudioRef.current === audio) {
             currentAudioRef.current = null;
+          }
+          if (playbackIdRef.current === playbackId) {
+            setIsPlaying(false);
           }
           speakWithBrowserVoice();
         };
@@ -161,6 +188,9 @@ export function useMandarinSpeech() {
         void audio.play().catch(() => {
           if (currentAudioRef.current === audio) {
             currentAudioRef.current = null;
+          }
+          if (playbackIdRef.current === playbackId) {
+            setIsPlaying(false);
           }
           speakWithBrowserVoice();
         });
@@ -172,5 +202,5 @@ export function useMandarinSpeech() {
     [audioElementSupported, browserSpeechSupported, mandarinVoice, stopCurrentAudio, supported],
   );
 
-  return { message, supported, speak };
+  return { isPlaying, message, supported, speak };
 }
