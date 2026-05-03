@@ -33,6 +33,8 @@ const DEFAULT_ZOOM = 1;
 const MIN_ZOOM = 0.08;
 const MAX_ZOOM = 36;
 const ZOOM_SENSITIVITY = 0.0015;
+const WHEEL_DELTA_THRESHOLD = 0.5;
+const WHEEL_PAN_SENSITIVITY = 1;
 const TILE_BASE_SIZE = 74;
 const MIN_VISIBLE_MAP_EDGE = 96;
 const HSK4_WORD_MAP_SPLIT_INDEX = 300;
@@ -1066,17 +1068,28 @@ function App() {
       const cursorY = event.clientY - rect.top - viewport.clientTop;
       const currentCamera = mapCameraRef.current;
       const currentScale = Math.max(currentCamera.scale, 0.001);
-      const nextScale = clampZoom(currentScale * Math.exp(-event.deltaY * ZOOM_SENSITIVITY));
-      if (Math.abs(nextScale - currentScale) < 0.0005) {
+      const horizontalDelta =
+        Math.abs(event.deltaX) > WHEEL_DELTA_THRESHOLD ? event.deltaX : event.shiftKey ? event.deltaY : 0;
+      const zoomDelta = event.shiftKey ? 0 : event.deltaY;
+      const nextScale =
+        Math.abs(zoomDelta) > WHEEL_DELTA_THRESHOLD
+          ? clampZoom(currentScale * Math.exp(-zoomDelta * ZOOM_SENSITIVITY))
+          : currentScale;
+      const shouldPanHorizontally = Math.abs(horizontalDelta) > WHEEL_DELTA_THRESHOLD;
+      const shouldZoom = Math.abs(nextScale - currentScale) >= 0.0005;
+
+      if (!shouldZoom && !shouldPanHorizontally) {
         return;
       }
 
       const mapX = (cursorX - currentCamera.panX) / currentScale;
       const mapY = (cursorY - currentCamera.panY) / currentScale;
+      const nextPanX = shouldZoom ? cursorX - mapX * nextScale : currentCamera.panX;
+      const nextPanY = shouldZoom ? cursorY - mapY * nextScale : currentCamera.panY;
 
       commitMapCamera({
-        panX: cursorX - mapX * nextScale,
-        panY: cursorY - mapY * nextScale,
+        panX: nextPanX - horizontalDelta * WHEEL_PAN_SENSITIVITY,
+        panY: nextPanY,
         scale: nextScale,
       });
     },
