@@ -1425,23 +1425,49 @@ h1 {
 }
 
 .status-action {
+  border: 1px solid transparent;
   color: #334155;
   background: #e2e8f0;
 }
 
+.status-action.learning {
+  color: #9a3412;
+  border-color: #fdba74;
+  background: #fff;
+}
+
+.status-action.know {
+  color: #166534;
+  border-color: #86efac;
+  background: #fff;
+}
+
+.status-action.learning:hover {
+  background: #ffedd5;
+  box-shadow: 0 10px 22px rgba(249, 115, 22, 0.16);
+}
+
+.status-action.know:hover {
+  background: #dcfce7;
+  box-shadow: 0 10px 22px rgba(22, 163, 74, 0.16);
+}
+
 .status-action.active.learning {
   color: #fff;
+  border-color: #f97316;
   background: #f97316;
   box-shadow: 0 10px 24px rgba(249, 115, 22, 0.26);
 }
 
 .status-action.active.know {
   color: #fff;
+  border-color: #16a34a;
   background: #16a34a;
   box-shadow: 0 10px 24px rgba(22, 163, 74, 0.24);
 }
 
 .status-action.muted {
+  border-color: transparent;
   color: #64748b;
   background: #f1f5f9;
 }

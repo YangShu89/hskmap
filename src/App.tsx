@@ -1304,6 +1304,14 @@ function DetailModal({
 
   const audioNote = speechMessage;
   const hasWritingAnimation = WRITING_PRACTICE_LEVELS.has(word.level ?? 1);
+  const markForReview = () => {
+    onSetStatus(word.id, 'learning');
+    onClose();
+  };
+  const markAsKnown = () => {
+    onSetStatus(word.id, 'know');
+    onClose();
+  };
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose} role="presentation">
@@ -1400,24 +1408,26 @@ function DetailModal({
               </span>
               <span>Play audio</span>
             </button>
-            <div className="modal-status-actions">
+            <div className={status ? 'modal-status-actions' : 'modal-status-actions is-unmarked'}>
               <button
-                className={status === 'learning' ? 'status-action active learning' : 'status-action'}
+                className={status === 'learning' ? 'status-action learning active' : 'status-action learning'}
                 type="button"
-                onClick={() => onSetStatus(word.id, 'learning')}
+                onClick={markForReview}
               >
-                Learning
+                Review Again
               </button>
               <button
-                className={status === 'know' ? 'status-action active know' : 'status-action'}
+                className={status === 'know' ? 'status-action know active' : 'status-action know'}
                 type="button"
-                onClick={() => onSetStatus(word.id, 'know')}
+                onClick={markAsKnown}
               >
-                Know
+                I Know This
               </button>
-              <button className="status-action muted" type="button" onClick={() => onClearStatus(word.id)}>
-                Clear
-              </button>
+              {status ? (
+                <button className="status-action muted" type="button" onClick={() => onClearStatus(word.id)}>
+                  Clear
+                </button>
+              ) : null}
             </div>
           </div>
 
