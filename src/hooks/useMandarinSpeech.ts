@@ -40,6 +40,7 @@ export function useMandarinSpeech() {
   const [sourceMessage, setSourceMessage] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const preloadedAudioRef = useRef<HTMLAudioElement | null>(null);
   const playbackIdRef = useRef(0);
   const browserSpeechSupported = typeof window !== 'undefined' && 'speechSynthesis' in window;
   const audioElementSupported = typeof window !== 'undefined' && 'Audio' in window;
@@ -101,6 +102,41 @@ export function useMandarinSpeech() {
     currentAudioRef.current = null;
   }, []);
 
+  const clearPreloadedAudio = useCallback(() => {
+    if (!preloadedAudioRef.current) {
+      return;
+    }
+
+    preloadedAudioRef.current.pause();
+    preloadedAudioRef.current.removeAttribute('src');
+    preloadedAudioRef.current.load();
+    preloadedAudioRef.current = null;
+  }, []);
+
+  const preload = useCallback(
+    (audioSrc?: string) => {
+      if (!audioSrc || !audioElementSupported || typeof window === 'undefined') {
+        clearPreloadedAudio();
+        return;
+      }
+
+      const resolvedSrc = new URL(audioSrc, window.location.href).href;
+      if (preloadedAudioRef.current?.src === resolvedSrc) {
+        return;
+      }
+
+      clearPreloadedAudio();
+      const audio = new Audio();
+      audio.preload = 'auto';
+      audio.src = audioSrc;
+      audio.load();
+      preloadedAudioRef.current = audio;
+    },
+    [audioElementSupported, clearPreloadedAudio],
+  );
+
+  useEffect(() => clearPreloadedAudio, [clearPreloadedAudio]);
+
   const speak = useCallback(
     (text: string, audioSrc?: string) => {
       if (!supported || typeof window === 'undefined') {
@@ -161,6 +197,7 @@ export function useMandarinSpeech() {
 
       if (audioSrc && audioElementSupported) {
         const audio = new Audio(audioSrc);
+        audio.preload = 'auto';
         currentAudioRef.current = audio;
         audio.onended = () => {
           if (currentAudioRef.current === audio) {
@@ -202,5 +239,5 @@ export function useMandarinSpeech() {
     [audioElementSupported, browserSpeechSupported, mandarinVoice, stopCurrentAudio, supported],
   );
 
-  return { isPlaying, message, supported, speak };
+  return { isPlaying, message, preload, supported, speak };
 }

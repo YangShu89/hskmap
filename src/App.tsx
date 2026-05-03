@@ -1533,7 +1533,13 @@ function App() {
     didMove: false,
   });
   const { progress, setWordStatus, clearWordStatus, resetProgress } = useProgress();
-  const speech = useMandarinSpeech();
+  const {
+    isPlaying: isAudioPlaying,
+    message: speechMessage,
+    preload: preloadSpeechAudio,
+    speak: speakMandarin,
+    supported: speechSupported,
+  } = useMandarinSpeech();
   const words = selectedView === 'all' ? ALL_WORDS : HSK_WORDS_BY_LEVEL[selectedView];
   const selectedViewMeta = VIEW_OPTIONS.find((view) => view.id === selectedView) ?? VIEW_OPTIONS[0];
 
@@ -1684,9 +1690,9 @@ function App() {
 
   const handleSpeak = useCallback(
     (word: HskWord) => {
-      speech.speak(word.hanzi, getWordAudioSrc(word));
+      speakMandarin(word.hanzi, getWordAudioSrc(word));
     },
-    [speech],
+    [speakMandarin],
   );
 
   const handleMapWheel = useCallback(
@@ -1808,6 +1814,10 @@ function App() {
 
     setSelectedWord(null);
   }, [progress, selectedWord, words]);
+
+  useEffect(() => {
+    preloadSpeechAudio(selectedWord ? getWordAudioSrc(selectedWord) : undefined);
+  }, [preloadSpeechAudio, selectedWord]);
 
   useEffect(() => {
     if (!isModalOpen) {
@@ -2087,9 +2097,9 @@ function App() {
           onClose={() => setSelectedWord(null)}
           onSetStatus={handleSetStatus}
           onSpeak={handleSpeak}
-          isAudioPlaying={speech.isPlaying}
-          speechMessage={speech.message}
-          speechSupported={speech.supported}
+          isAudioPlaying={isAudioPlaying}
+          speechMessage={speechMessage}
+          speechSupported={speechSupported}
           status={progress[selectedWord.id]}
           word={selectedWord}
         />
