@@ -489,6 +489,18 @@ h1 {
   cursor: grabbing;
 }
 
+.canvas-word-map.has-canvas-hover:not(.is-panning) {
+  cursor: pointer;
+}
+
+.word-map-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 .poster-scroll.is-panning .word-tile:hover {
   transform: none;
   box-shadow: none;

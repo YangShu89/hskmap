@@ -3,7 +3,7 @@ import HanziWriter, { type StrokeData } from 'hanzi-writer';
 import { HSK_LEVEL_OPTIONS, HSK_WORDS_BY_LEVEL } from './data/hsk';
 import { useMandarinSpeech } from './hooks/useMandarinSpeech';
 import { useProgress } from './hooks/useProgress';
-import type { HskLevel, HskWord, WordStatus } from './types';
+import type { HskLevel, HskWord, ProgressMap, WordStatus } from './types';
 
 type FilterMode = 'all' | 'learning' | 'know' | 'unmarked';
 type HskView = HskLevel | 'all';
@@ -18,6 +18,34 @@ interface MapCamera {
 interface VisibleWordGroup {
   startIndex: number;
   words: HskWord[];
+}
+
+interface WordTileLayout {
+  word: HskWord;
+  x: number;
+  y: number;
+}
+
+interface WordMapLayout {
+  width: number;
+  height: number;
+  tiles: WordTileLayout[];
+}
+
+interface MapViewportSize {
+  width: number;
+  height: number;
+}
+
+interface MapDragState {
+  active: boolean;
+  captured: boolean;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  startPanX: number;
+  startPanY: number;
+  didMove: boolean;
 }
 
 interface PracticeFeedback {
@@ -36,9 +64,32 @@ const ZOOM_SENSITIVITY = 0.0015;
 const WHEEL_DELTA_THRESHOLD = 0.5;
 const WHEEL_PAN_SENSITIVITY = 1;
 const TILE_BASE_SIZE = 74;
+const TILE_BOARD_PADDING_RATIO = 0.324;
 const MIN_VISIBLE_MAP_EDGE = 96;
 const HSK4_WORD_MAP_SPLIT_INDEX = 300;
+const CANVAS_OVERSCAN_TILES = 2;
 const ALL_WORDS = HSK_LEVEL_OPTIONS.flatMap((level) => HSK_WORDS_BY_LEVEL[level.id]);
+const TILE_COLORS = {
+  default: {
+    fill: '#f7b718',
+    hoverFill: '#ffc928',
+    border: 'rgba(255, 244, 196, 0.9)',
+    hoverBorder: '#fff8c5',
+    text: '#3b3208',
+  },
+  know: {
+    fill: '#35cf66',
+    hoverFill: '#4ade80',
+    border: 'rgba(220, 252, 231, 0.92)',
+    text: '#052e16',
+  },
+  learning: {
+    fill: '#ff6b16',
+    hoverFill: '#fb7c24',
+    border: 'rgba(255, 237, 213, 0.92)',
+    text: '#fff7ed',
+  },
+} as const;
 const LEVEL_ACCENTS: Record<HskLevel, string> = {
   1: '#f7b718',
   2: '#0f8fa5',
@@ -224,6 +275,129 @@ function clampZoom(value: number) {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
 }
 
+function clampMapCameraToBounds(
+  camera: MapCamera,
+  viewportWidth: number,
+  viewportHeight: number,
+  contentWidth: number,
+  contentHeight: number,
+) {
+  const scale = clampZoom(camera.scale);
+  const scaledWidth = contentWidth * scale;
+  const scaledHeight = contentHeight * scale;
+  const clampAxis = (pan: number, viewportSize: number, contentSize: number) => {
+    const visibleEdge = Math.min(
+      contentSize,
+      Math.max(MIN_VISIBLE_MAP_EDGE, Math.min(viewportSize * 0.2, 180)),
+    );
+    const minPan = visibleEdge - contentSize;
+    const maxPan = viewportSize - visibleEdge;
+
+    return Math.min(maxPan, Math.max(minPan, pan));
+  };
+
+  return {
+    panX: clampAxis(camera.panX, viewportWidth, scaledWidth),
+    panY: clampAxis(camera.panY, viewportHeight, scaledHeight),
+    scale,
+  };
+}
+
+function getWheelAdjustedCamera({
+  camera,
+  cursorX,
+  cursorY,
+  deltaX,
+  deltaY,
+  shiftKey,
+}: {
+  camera: MapCamera;
+  cursorX: number;
+  cursorY: number;
+  deltaX: number;
+  deltaY: number;
+  shiftKey: boolean;
+}) {
+  const currentScale = Math.max(camera.scale, 0.001);
+  const horizontalDelta =
+    Math.abs(deltaX) > WHEEL_DELTA_THRESHOLD ? deltaX : shiftKey ? deltaY : 0;
+  const zoomDelta = shiftKey ? 0 : deltaY;
+  const nextScale =
+    Math.abs(zoomDelta) > WHEEL_DELTA_THRESHOLD
+      ? clampZoom(currentScale * Math.exp(-zoomDelta * ZOOM_SENSITIVITY))
+      : currentScale;
+  const shouldPanHorizontally = Math.abs(horizontalDelta) > WHEEL_DELTA_THRESHOLD;
+  const shouldZoom = Math.abs(nextScale - currentScale) >= 0.0005;
+
+  if (!shouldZoom && !shouldPanHorizontally) {
+    return camera;
+  }
+
+  const mapX = (cursorX - camera.panX) / currentScale;
+  const mapY = (cursorY - camera.panY) / currentScale;
+  const nextPanX = shouldZoom ? cursorX - mapX * nextScale : camera.panX;
+  const nextPanY = shouldZoom ? cursorY - mapY * nextScale : camera.panY;
+
+  return {
+    panX: nextPanX - horizontalDelta * WHEEL_PAN_SENSITIVITY,
+    panY: nextPanY,
+    scale: nextScale,
+  };
+}
+
+function getWordMapLayout(wordGroups: VisibleWordGroup[], levelGridRows: number) {
+  const padding = TILE_BASE_SIZE * TILE_BOARD_PADDING_RATIO;
+  const rowCount = Math.max(levelGridRows, 1);
+  const tiles: WordTileLayout[] = [];
+  let currentY = padding;
+  let maxGroupWidth = 0;
+
+  for (const wordGroup of wordGroups) {
+    const groupColumns = Math.ceil(wordGroup.words.length / rowCount);
+    const groupWidth = groupColumns * TILE_BASE_SIZE;
+    maxGroupWidth = Math.max(maxGroupWidth, groupWidth);
+
+    wordGroup.words.forEach((word, index) => {
+      const column = Math.floor(index / rowCount);
+      const row = index % rowCount;
+
+      tiles.push({
+        word,
+        x: padding + column * TILE_BASE_SIZE,
+        y: currentY + row * TILE_BASE_SIZE,
+      });
+    });
+
+    currentY += rowCount * TILE_BASE_SIZE;
+  }
+
+  return {
+    width: padding * 2 + maxGroupWidth,
+    height: padding + currentY,
+    tiles,
+  };
+}
+
+function hitTestWordTile(layout: WordMapLayout, camera: MapCamera, viewportX: number, viewportY: number) {
+  const scale = Math.max(camera.scale, 0.001);
+  const mapX = (viewportX - camera.panX) / scale;
+  const mapY = (viewportY - camera.panY) / scale;
+
+  for (let index = layout.tiles.length - 1; index >= 0; index -= 1) {
+    const tile = layout.tiles[index];
+    if (
+      mapX >= tile.x &&
+      mapX <= tile.x + TILE_BASE_SIZE &&
+      mapY >= tile.y &&
+      mapY <= tile.y + TILE_BASE_SIZE
+    ) {
+      return tile.word;
+    }
+  }
+
+  return null;
+}
+
 function TileButton({
   word,
   status,
@@ -264,6 +438,472 @@ function TileButton({
     >
       <span className="tile-hanzi">{tileLabel}</span>
     </button>
+  );
+}
+
+function drawWordMapCanvas({
+  camera,
+  context,
+  height,
+  hoveredWordId,
+  layout,
+  progress,
+  pulseProgress,
+  pulsingWordId,
+  width,
+}: {
+  camera: MapCamera;
+  context: CanvasRenderingContext2D;
+  height: number;
+  hoveredWordId: string | null;
+  layout: WordMapLayout;
+  progress: ProgressMap;
+  pulseProgress: number | null;
+  pulsingWordId: string | null;
+  width: number;
+}) {
+  const tileSize = TILE_BASE_SIZE * camera.scale;
+  const overscan = tileSize * CANVAS_OVERSCAN_TILES;
+
+  context.clearRect(0, 0, width, height);
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+
+  for (const tile of layout.tiles) {
+    const status = progress[tile.word.id];
+    const palette = status === 'know' ? TILE_COLORS.know : status === 'learning' ? TILE_COLORS.learning : TILE_COLORS.default;
+    const isHovered = hoveredWordId === tile.word.id;
+    const isPulsing = pulsingWordId === tile.word.id && pulseProgress !== null;
+    const pulseScale = isPulsing ? 1 + Math.sin(pulseProgress * Math.PI) * 0.04 : 1;
+    const x = camera.panX + tile.x * camera.scale;
+    const y = camera.panY + tile.y * camera.scale;
+    const drawSize = tileSize * pulseScale;
+    const drawX = x - (drawSize - tileSize) / 2;
+    const drawY = y - (drawSize - tileSize) / 2;
+
+    if (
+      drawX > width + overscan ||
+      drawY > height + overscan ||
+      drawX + drawSize < -overscan ||
+      drawY + drawSize < -overscan
+    ) {
+      continue;
+    }
+
+    if (isHovered || isPulsing) {
+      context.shadowColor = isPulsing ? 'rgba(15, 23, 42, 0.18)' : 'rgba(120, 53, 15, 0.24)';
+      context.shadowBlur = isPulsing ? 20 : 18;
+      context.shadowOffsetY = isPulsing ? 8 : 10;
+    } else {
+      context.shadowColor = 'transparent';
+      context.shadowBlur = 0;
+      context.shadowOffsetY = 0;
+    }
+
+    context.fillStyle = isHovered ? palette.hoverFill : palette.fill;
+    context.fillRect(drawX, drawY, drawSize, drawSize);
+    context.shadowColor = 'transparent';
+    context.shadowBlur = 0;
+    context.shadowOffsetY = 0;
+    context.lineWidth = 1;
+    context.strokeStyle =
+      isHovered && status === undefined ? TILE_COLORS.default.hoverBorder : palette.border;
+    context.strokeRect(drawX + 0.5, drawY + 0.5, Math.max(0, drawSize - 1), Math.max(0, drawSize - 1));
+
+    const tileLabel = getTileLabel(tile.word.hanzi);
+    const fontSize = drawSize * getTileTextScale(tileLabel);
+    if (fontSize < 3 || drawSize < 8) {
+      continue;
+    }
+
+    const lines = tileLabel.split('\n').filter(Boolean);
+    const lineHeight = fontSize * 0.96;
+    const firstLineY = drawY + drawSize / 2 - ((lines.length - 1) * lineHeight) / 2;
+
+    context.fillStyle = palette.text;
+    context.font = `950 ${fontSize}px Inter, "Segoe UI", sans-serif`;
+    lines.forEach((line, index) => {
+      context.fillText(line, drawX + drawSize / 2, firstLineY + index * lineHeight);
+    });
+  }
+}
+
+interface CanvasWordMapProps {
+  words: HskWord[];
+  wordGroups: VisibleWordGroup[];
+  progress: ProgressMap;
+  pulsingWordId: string | null;
+  levelGridRows: number;
+  selectedViewLabel: string;
+  onSelectWord: (word: HskWord) => void;
+}
+
+function CanvasWordMap({
+  words,
+  wordGroups,
+  progress,
+  pulsingWordId,
+  levelGridRows,
+  selectedViewLabel,
+  onSelectWord,
+}: CanvasWordMapProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const mapCameraRef = useRef<MapCamera>({
+    panX: 0,
+    panY: 0,
+    scale: DEFAULT_ZOOM,
+  });
+  const didDragRef = useRef(false);
+  const dragStateRef = useRef<MapDragState>({
+    active: false,
+    captured: false,
+    pointerId: 0,
+    startX: 0,
+    startY: 0,
+    startPanX: 0,
+    startPanY: 0,
+    didMove: false,
+  });
+  const pulseStartRef = useRef(0);
+  const [mapCamera, setMapCamera] = useState<MapCamera>({
+    panX: 0,
+    panY: 0,
+    scale: DEFAULT_ZOOM,
+  });
+  const [hoveredWordId, setHoveredWordId] = useState<string | null>(null);
+  const [pulseProgress, setPulseProgress] = useState<number | null>(null);
+  const [viewportSize, setViewportSize] = useState<MapViewportSize>({ width: 0, height: 0 });
+  const layout = useMemo(() => getWordMapLayout(wordGroups, levelGridRows), [levelGridRows, wordGroups]);
+
+  const constrainMapCamera = useCallback(
+    (camera: MapCamera) => {
+      const viewport = viewportRef.current;
+      if (!viewport) {
+        return {
+          ...camera,
+          scale: clampZoom(camera.scale),
+        };
+      }
+
+      return clampMapCameraToBounds(
+        camera,
+        viewport.clientWidth,
+        viewport.clientHeight,
+        layout.width,
+        layout.height,
+      );
+    },
+    [layout.height, layout.width],
+  );
+
+  const commitMapCamera = useCallback(
+    (nextCamera: MapCamera) => {
+      const constrainedCamera = constrainMapCamera(nextCamera);
+      mapCameraRef.current = constrainedCamera;
+      setMapCamera(constrainedCamera);
+      return constrainedCamera;
+    },
+    [constrainMapCamera],
+  );
+
+  const getWordFromPointer = useCallback(
+    (event: React.PointerEvent<HTMLElement> | React.MouseEvent<HTMLElement>) => {
+      const viewport = viewportRef.current;
+      if (!viewport) {
+        return null;
+      }
+
+      const rect = viewport.getBoundingClientRect();
+      const viewportX = event.clientX - rect.left - viewport.clientLeft;
+      const viewportY = event.clientY - rect.top - viewport.clientTop;
+
+      return hitTestWordTile(layout, mapCameraRef.current, viewportX, viewportY);
+    },
+    [layout],
+  );
+
+  const updateHoveredWord = useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      const hoveredWord = getWordFromPointer(event);
+      const nextHoveredWordId = hoveredWord?.id ?? null;
+      setHoveredWordId((current) => (current === nextHoveredWordId ? current : nextHoveredWordId));
+    },
+    [getWordFromPointer],
+  );
+
+  const handleMapWheel = useCallback(
+    (event: React.WheelEvent<HTMLElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const viewport = viewportRef.current;
+      if (!viewport) {
+        return;
+      }
+
+      const rect = viewport.getBoundingClientRect();
+      const cursorX = event.clientX - rect.left - viewport.clientLeft;
+      const cursorY = event.clientY - rect.top - viewport.clientTop;
+
+      commitMapCamera(
+        getWheelAdjustedCamera({
+          camera: mapCameraRef.current,
+          cursorX,
+          cursorY,
+          deltaX: event.deltaX,
+          deltaY: event.deltaY,
+          shiftKey: event.shiftKey,
+        }),
+      );
+    },
+    [commitMapCamera],
+  );
+
+  const handleMapDragStart = useCallback((event: React.DragEvent<HTMLElement>) => {
+    event.preventDefault();
+  }, []);
+
+  const handleMapPointerDown = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    didDragRef.current = false;
+    dragStateRef.current = {
+      active: true,
+      captured: false,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startPanX: mapCameraRef.current.panX,
+      startPanY: mapCameraRef.current.panY,
+      didMove: false,
+    };
+  }, []);
+
+  const handleMapPointerMove = useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      const dragState = dragStateRef.current;
+      if (!dragState.active || dragState.pointerId !== event.pointerId) {
+        updateHoveredWord(event);
+        return;
+      }
+
+      const deltaX = event.clientX - dragState.startX;
+      const deltaY = event.clientY - dragState.startY;
+      if (Math.abs(deltaX) + Math.abs(deltaY) > 4) {
+        dragState.didMove = true;
+        didDragRef.current = true;
+        setHoveredWordId(null);
+
+        if (!dragState.captured) {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          event.currentTarget.classList.add('is-panning');
+          dragState.captured = true;
+        }
+      }
+
+      if (dragState.didMove) {
+        event.preventDefault();
+        const nextCamera = commitMapCamera({
+          ...mapCameraRef.current,
+          panX: dragState.startPanX + deltaX,
+          panY: dragState.startPanY + deltaY,
+        });
+        dragState.startX = event.clientX;
+        dragState.startY = event.clientY;
+        dragState.startPanX = nextCamera.panX;
+        dragState.startPanY = nextCamera.panY;
+      }
+    },
+    [commitMapCamera, updateHoveredWord],
+  );
+
+  const handleMapPointerEnd = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    const dragState = dragStateRef.current;
+    if (!dragState.active || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    dragStateRef.current = { ...dragState, active: false };
+    event.currentTarget.classList.remove('is-panning');
+    if (dragState.captured && event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    if (dragState.didMove) {
+      window.setTimeout(() => {
+        didDragRef.current = false;
+      }, 0);
+    }
+  }, []);
+
+  const handleMapPointerLeave = useCallback(() => {
+    if (!dragStateRef.current.active) {
+      setHoveredWordId(null);
+    }
+  }, []);
+
+  const handleMapClick = useCallback(
+    (event: React.MouseEvent<HTMLElement>) => {
+      if (didDragRef.current) {
+        event.preventDefault();
+        event.stopPropagation();
+        didDragRef.current = false;
+        return;
+      }
+
+      const selectedWord = getWordFromPointer(event);
+      if (selectedWord) {
+        onSelectWord(selectedWord);
+      }
+    },
+    [getWordFromPointer, onSelectWord],
+  );
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) {
+      return undefined;
+    }
+
+    const updateViewportSize = () => {
+      setViewportSize({
+        width: viewport.clientWidth,
+        height: viewport.clientHeight,
+      });
+    };
+    const resizeObserver = new ResizeObserver(updateViewportSize);
+
+    updateViewportSize();
+    resizeObserver.observe(viewport);
+    window.addEventListener('resize', updateViewportSize);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', updateViewportSize);
+    };
+  }, []);
+
+  useEffect(() => {
+    const resetCamera = {
+      panX: 0,
+      panY: 0,
+      scale: DEFAULT_ZOOM,
+    };
+    mapCameraRef.current = resetCamera;
+    setMapCamera(resetCamera);
+    setHoveredWordId(null);
+  }, [selectedViewLabel]);
+
+  useEffect(() => {
+    commitMapCamera(mapCameraRef.current);
+  }, [commitMapCamera, viewportSize.height, viewportSize.width]);
+
+  useEffect(() => {
+    if (!pulsingWordId) {
+      setPulseProgress(null);
+      return undefined;
+    }
+
+    let animationFrame = 0;
+    pulseStartRef.current = performance.now();
+
+    const animatePulse = (timestamp: number) => {
+      const nextProgress = Math.min((timestamp - pulseStartRef.current) / 520, 1);
+      setPulseProgress(nextProgress);
+
+      if (nextProgress < 1) {
+        animationFrame = window.requestAnimationFrame(animatePulse);
+      }
+    };
+
+    animationFrame = window.requestAnimationFrame(animatePulse);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [pulsingWordId]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const viewport = viewportRef.current;
+    if (!canvas || !viewport) {
+      return;
+    }
+
+    const width = viewportSize.width || viewport.clientWidth;
+    const height = viewportSize.height || viewport.clientHeight;
+    if (!width || !height) {
+      return;
+    }
+
+    const devicePixelRatio = Math.max(window.devicePixelRatio || 1, 1);
+    const canvasWidth = Math.max(1, Math.round(width * devicePixelRatio));
+    const canvasHeight = Math.max(1, Math.round(height * devicePixelRatio));
+    if (canvas.width !== canvasWidth) {
+      canvas.width = canvasWidth;
+    }
+
+    if (canvas.height !== canvasHeight) {
+      canvas.height = canvasHeight;
+    }
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      return;
+    }
+
+    context.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    drawWordMapCanvas({
+      camera: mapCamera,
+      context,
+      height,
+      hoveredWordId,
+      layout,
+      progress,
+      pulseProgress,
+      pulsingWordId,
+      width,
+    });
+  }, [hoveredWordId, layout, mapCamera, progress, pulseProgress, pulsingWordId, viewportSize]);
+
+  return (
+    <div
+      ref={viewportRef}
+      className={hoveredWordId ? 'poster-scroll canvas-word-map has-canvas-hover' : 'poster-scroll canvas-word-map'}
+      onClick={handleMapClick}
+      onDragStart={handleMapDragStart}
+      onPointerCancel={handleMapPointerEnd}
+      onPointerDown={handleMapPointerDown}
+      onPointerLeave={handleMapPointerLeave}
+      onPointerMove={handleMapPointerMove}
+      onPointerUp={handleMapPointerEnd}
+      onWheel={handleMapWheel}
+      aria-label={`${selectedViewLabel} canvas word map`}
+      role="region"
+    >
+      <canvas
+        aria-hidden="true"
+        className="word-map-canvas"
+        ref={canvasRef}
+        width={Math.max(1, viewportSize.width)}
+        height={Math.max(1, viewportSize.height)}
+      />
+      <div className="canvas-word-fallback sr-only" aria-label={`${selectedViewLabel} word list`}>
+        {words.map((word) => (
+          <button
+            key={word.id}
+            type="button"
+            onClick={() => onSelectWord(word)}
+            aria-label={`${word.hanzi}, ${word.pinyin}, ${word.meaning}`}
+          >
+            {word.hanzi}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -975,6 +1615,7 @@ function App() {
   const isSplitWordGrid = visibleWordGroups.length > 1;
   const tileBaseSize = TILE_BASE_SIZE;
   const levelGridRows = selectedView === 6 ? 30 : selectedView === 5 ? 24 : 6;
+  const shouldUseCanvasMap = selectedView === 5 || selectedView === 6;
 
   const constrainMapCamera = useCallback((camera: MapCamera) => {
     const viewport = posterViewportRef.current;
@@ -988,26 +1629,16 @@ function App() {
       Number.parseFloat(window.getComputedStyle(viewport).getPropertyValue('--tile-size')) ||
       tileBaseSize * mapCameraRef.current.scale;
     const renderedScale = Math.max(renderedTileSize / tileBaseSize, 0.001);
-    const scaledWidth = (board.offsetWidth / renderedScale) * scale;
-    const scaledHeight = (board.offsetHeight / renderedScale) * scale;
-    const viewportWidth = viewport.clientWidth;
-    const viewportHeight = viewport.clientHeight;
-    const clampAxis = (pan: number, viewportSize: number, contentSize: number) => {
-      const visibleEdge = Math.min(
-        contentSize,
-        Math.max(MIN_VISIBLE_MAP_EDGE, Math.min(viewportSize * 0.2, 180)),
-      );
-      const minPan = visibleEdge - contentSize;
-      const maxPan = viewportSize - visibleEdge;
+    const contentWidth = board.offsetWidth / renderedScale;
+    const contentHeight = board.offsetHeight / renderedScale;
 
-      return Math.min(maxPan, Math.max(minPan, pan));
-    };
-
-    return {
-      panX: clampAxis(camera.panX, viewportWidth, scaledWidth),
-      panY: clampAxis(camera.panY, viewportHeight, scaledHeight),
-      scale,
-    };
+    return clampMapCameraToBounds(
+      { ...camera, scale },
+      viewport.clientWidth,
+      viewport.clientHeight,
+      contentWidth,
+      contentHeight,
+    );
   }, [tileBaseSize]);
 
   const commitMapCamera = useCallback(
@@ -1066,32 +1697,17 @@ function App() {
       const rect = viewport.getBoundingClientRect();
       const cursorX = event.clientX - rect.left - viewport.clientLeft;
       const cursorY = event.clientY - rect.top - viewport.clientTop;
-      const currentCamera = mapCameraRef.current;
-      const currentScale = Math.max(currentCamera.scale, 0.001);
-      const horizontalDelta =
-        Math.abs(event.deltaX) > WHEEL_DELTA_THRESHOLD ? event.deltaX : event.shiftKey ? event.deltaY : 0;
-      const zoomDelta = event.shiftKey ? 0 : event.deltaY;
-      const nextScale =
-        Math.abs(zoomDelta) > WHEEL_DELTA_THRESHOLD
-          ? clampZoom(currentScale * Math.exp(-zoomDelta * ZOOM_SENSITIVITY))
-          : currentScale;
-      const shouldPanHorizontally = Math.abs(horizontalDelta) > WHEEL_DELTA_THRESHOLD;
-      const shouldZoom = Math.abs(nextScale - currentScale) >= 0.0005;
 
-      if (!shouldZoom && !shouldPanHorizontally) {
-        return;
-      }
-
-      const mapX = (cursorX - currentCamera.panX) / currentScale;
-      const mapY = (cursorY - currentCamera.panY) / currentScale;
-      const nextPanX = shouldZoom ? cursorX - mapX * nextScale : currentCamera.panX;
-      const nextPanY = shouldZoom ? cursorY - mapY * nextScale : currentCamera.panY;
-
-      commitMapCamera({
-        panX: nextPanX - horizontalDelta * WHEEL_PAN_SENSITIVITY,
-        panY: nextPanY,
-        scale: nextScale,
-      });
+      commitMapCamera(
+        getWheelAdjustedCamera({
+          camera: mapCameraRef.current,
+          cursorX,
+          cursorY,
+          deltaX: event.deltaX,
+          deltaY: event.deltaY,
+          shiftKey: event.shiftKey,
+        }),
+      );
     },
     [commitMapCamera],
   );
@@ -1376,69 +1992,81 @@ function App() {
         )
       ) : (
         <section className="map-shell" aria-label={`${selectedViewMeta.label} word map`}>
-          <div
-            ref={posterViewportRef}
-            className="poster-scroll"
-            onClickCapture={handleMapClickCapture}
-            onDragStart={handleMapDragStart}
-            onPointerCancel={handleMapPointerEnd}
-            onPointerDown={handleMapPointerDown}
-            onPointerMove={handleMapPointerMove}
-            onPointerUp={handleMapPointerEnd}
-            onWheel={handleMapWheel}
-            aria-label={`${selectedViewMeta.label} scrollable word map`}
-            role="region"
-            style={
-              {
-                '--map-pan-x': formatPixelValue(mapCamera.panX),
-                '--map-pan-y': formatPixelValue(mapCamera.panY),
-                '--tile-size': formatPixelValue(tileBaseSize * mapCamera.scale),
-              } as React.CSSProperties
-            }
-          >
-            {hasVisibleWords ? (
-              <div className="poster-zoom-space">
-                <div
-                  className={isSplitWordGrid ? 'poster-board is-split-word-grid' : 'poster-board'}
-                  ref={posterBoardRef}
-                >
-                  {visibleWordGroups.map((wordGroup, groupIndex) => (
-                    <div
-                      className="tile-grid level-word-grid"
-                      aria-label={
-                        isSplitWordGrid
-                          ? `${selectedViewMeta.label} words ${wordGroup.startIndex + 1}-${
-                              wordGroup.startIndex + wordGroup.words.length
-                            }`
-                          : selectedViewMeta.label
-                      }
-                      key={`${selectedViewMeta.label}-${groupIndex}`}
-                      style={
-                        {
-                          '--level-rows': levelGridRows,
-                        } as React.CSSProperties
-                      }
-                    >
-                      {wordGroup.words.map((word) => (
-                        <TileButton
-                          isPulsing={pulsingWordId === word.id}
-                          key={word.id}
-                          onSelect={setSelectedWord}
-                          status={progress[word.id]}
-                          word={word}
-                        />
-                      ))}
-                    </div>
-                  ))}
+          {shouldUseCanvasMap && hasVisibleWords ? (
+            <CanvasWordMap
+              levelGridRows={levelGridRows}
+              onSelectWord={setSelectedWord}
+              progress={progress}
+              pulsingWordId={pulsingWordId}
+              selectedViewLabel={selectedViewMeta.label}
+              wordGroups={visibleWordGroups}
+              words={visibleWords}
+            />
+          ) : (
+            <div
+              ref={posterViewportRef}
+              className="poster-scroll"
+              onClickCapture={handleMapClickCapture}
+              onDragStart={handleMapDragStart}
+              onPointerCancel={handleMapPointerEnd}
+              onPointerDown={handleMapPointerDown}
+              onPointerMove={handleMapPointerMove}
+              onPointerUp={handleMapPointerEnd}
+              onWheel={handleMapWheel}
+              aria-label={`${selectedViewMeta.label} scrollable word map`}
+              role="region"
+              style={
+                {
+                  '--map-pan-x': formatPixelValue(mapCamera.panX),
+                  '--map-pan-y': formatPixelValue(mapCamera.panY),
+                  '--tile-size': formatPixelValue(tileBaseSize * mapCamera.scale),
+                } as React.CSSProperties
+              }
+            >
+              {hasVisibleWords ? (
+                <div className="poster-zoom-space">
+                  <div
+                    className={isSplitWordGrid ? 'poster-board is-split-word-grid' : 'poster-board'}
+                    ref={posterBoardRef}
+                  >
+                    {visibleWordGroups.map((wordGroup, groupIndex) => (
+                      <div
+                        className="tile-grid level-word-grid"
+                        aria-label={
+                          isSplitWordGrid
+                            ? `${selectedViewMeta.label} words ${wordGroup.startIndex + 1}-${
+                                wordGroup.startIndex + wordGroup.words.length
+                              }`
+                            : selectedViewMeta.label
+                        }
+                        key={`${selectedViewMeta.label}-${groupIndex}`}
+                        style={
+                          {
+                            '--level-rows': levelGridRows,
+                          } as React.CSSProperties
+                        }
+                      >
+                        {wordGroup.words.map((word) => (
+                          <TileButton
+                            isPulsing={pulsingWordId === word.id}
+                            key={word.id}
+                            onSelect={setSelectedWord}
+                            status={progress[word.id]}
+                            word={word}
+                          />
+                        ))}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="empty-state">
-                <h2>No words match this view.</h2>
-                <p>Try a different search or progress filter.</p>
-              </div>
-            )}
-          </div>
+              ) : (
+                <div className="empty-state">
+                  <h2>No words match this view.</h2>
+                  <p>Try a different search or progress filter.</p>
+                </div>
+              )}
+            </div>
+          )}
         </section>
       )}
 
