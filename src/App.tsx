@@ -13,6 +13,7 @@ import { useProgress } from './hooks/useProgress';
 import type { HskLevel, HskWord, ProgressMap, WordStatus } from './types';
 
 type FilterMode = 'all' | 'learning' | 'know' | 'unmarked';
+type FlashcardPromptMode = 'chinese' | 'translation';
 type HskView = HskLevel | 'all';
 type WritingMode = 'watch' | 'practice';
 
@@ -124,6 +125,11 @@ const FILTERS: { id: FilterMode; label: string }[] = [
   { id: 'know', label: 'Known' },
   { id: 'unmarked', label: 'Unmarked' },
 ];
+const FLASHCARD_PROMPT_MODES: { id: FlashcardPromptMode; label: string }[] = [
+  { id: 'chinese', label: 'Chinese first' },
+  { id: 'translation', label: 'Translation first' },
+];
+const FLASHCARD_PROMPT_MODE_STORAGE_KEY = 'hsk-flashcard-prompt-mode';
 const LANGUAGE_STORAGE_KEY = 'hsk-translation-language';
 const LANGUAGE_OPTIONS: {
   id: TranslationLanguage;
@@ -164,6 +170,15 @@ function getInitialTranslationLanguage(): TranslationLanguage {
   return LANGUAGE_OPTIONS.some((option) => option.id === storedLanguage)
     ? (storedLanguage as TranslationLanguage)
     : 'en';
+}
+
+function getInitialFlashcardPromptMode(): FlashcardPromptMode {
+  if (typeof window === 'undefined') {
+    return 'chinese';
+  }
+
+  const storedMode = window.localStorage.getItem(FLASHCARD_PROMPT_MODE_STORAGE_KEY);
+  return storedMode === 'translation' ? 'translation' : 'chinese';
 }
 
 function getWordMeaning(
@@ -1322,6 +1337,7 @@ function DetailModal({
   word,
   wordMeaning,
   sentenceMeaning,
+  promptMode,
   status,
   isAudioPlaying,
   speechMessage,
@@ -1334,6 +1350,7 @@ function DetailModal({
   word: HskWord;
   wordMeaning: string;
   sentenceMeaning: string;
+  promptMode: FlashcardPromptMode;
   status?: WordStatus;
   isAudioPlaying: boolean;
   speechMessage: string | null;
@@ -1351,11 +1368,20 @@ function DetailModal({
   const flashcardStyle = {
     '--modal-hanzi-count': hanziCharacterCount,
   } as React.CSSProperties;
+  const isTranslationFirst = promptMode === 'translation';
+  const isRecallContentLocked = isTranslationFirst && !isAnswerVisible;
+  const flashcardClassName = [
+    'flashcard-card',
+    isAnswerVisible ? 'is-revealed' : '',
+    isTranslationFirst ? 'is-translation-first' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   useEffect(() => {
     setIsAnswerVisible(false);
     setIsSentenceExpanded(false);
-  }, [word.id]);
+  }, [promptMode, word.id]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1406,6 +1432,24 @@ function DetailModal({
     onSetStatus(word.id, 'know');
     onClose();
   };
+  const toggleSentenceDetail = useCallback(() => {
+    if (isRecallContentLocked) {
+      return;
+    }
+
+    setIsSentenceExpanded((expanded) => !expanded);
+  }, [isRecallContentLocked]);
+  const handleSentenceCardKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== 'Enter' && event.key !== ' ') {
+        return;
+      }
+
+      event.preventDefault();
+      toggleSentenceDetail();
+    },
+    [toggleSentenceDetail],
+  );
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose} role="presentation">
@@ -1428,26 +1472,46 @@ function DetailModal({
             {word.hanzi}
           </h2>
 
-          <button
-            aria-controls="word-detail-answer"
-            aria-expanded={isAnswerVisible}
-            className={isAnswerVisible ? 'flashcard-card is-revealed' : 'flashcard-card'}
-            onClick={() => setIsAnswerVisible((visible) => !visible)}
-            style={flashcardStyle}
-            type="button"
-          >
-            <span className="flashcard-face flashcard-front" aria-hidden={isAnswerVisible}>
-              <span className="modal-kicker">HSK {word.level ?? 1} Word</span>
-              <span className="modal-hanzi">{word.hanzi}</span>
-              <span className="flashcard-cue">Reveal answer</span>
-            </span>
-            <span className="flashcard-face flashcard-back" aria-hidden={!isAnswerVisible}>
-              <span className="modal-kicker">HSK {word.level ?? 1} Word</span>
-              <span className="modal-meaning" dir="auto">{wordMeaning}</span>
-              <span className="modal-pinyin">{word.pinyin}</span>
-              <span className="flashcard-cue">Hide answer</span>
-            </span>
-          </button>
+          <div className="flashcard-stage">
+            <button
+              aria-controls="word-detail-answer"
+              aria-expanded={isAnswerVisible}
+              className={flashcardClassName}
+              onClick={() => setIsAnswerVisible((visible) => !visible)}
+              style={flashcardStyle}
+              type="button"
+            >
+              <span className="flashcard-face flashcard-front" aria-hidden={isAnswerVisible}>
+                <span className="modal-kicker">HSK {word.level ?? 1} Word</span>
+                {isTranslationFirst ? (
+                  <span className="modal-meaning modal-prompt-meaning" dir="auto">
+                    {wordMeaning}
+                  </span>
+                ) : (
+                  <span className="modal-hanzi">{word.hanzi}</span>
+                )}
+                <span className="flashcard-cue">
+                  {isTranslationFirst ? 'Reveal Chinese' : 'Reveal answer'}
+                </span>
+              </span>
+              <span className="flashcard-face flashcard-back" aria-hidden={!isAnswerVisible}>
+                <span className="modal-kicker">HSK {word.level ?? 1} Word</span>
+                {isTranslationFirst ? (
+                  <>
+                    <span className="modal-hanzi">{word.hanzi}</span>
+                    <span className="modal-pinyin">{word.pinyin}</span>
+                    <span className="modal-meaning" dir="auto">{wordMeaning}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="modal-meaning" dir="auto">{wordMeaning}</span>
+                    <span className="modal-pinyin">{word.pinyin}</span>
+                  </>
+                )}
+                <span className="flashcard-cue">Hide answer</span>
+              </span>
+            </button>
+          </div>
 
           <div className={isAnswerVisible ? 'modal-answer is-visible' : 'modal-answer'} id="word-detail-answer">
             {word.examples?.length ? (
@@ -1459,27 +1523,47 @@ function DetailModal({
             ) : null}
           </div>
 
-          {hasWritingAnimation ? <HanziWriterCard hanzi={word.hanzi} /> : null}
+          {hasWritingAnimation ? (
+            <div className={isRecallContentLocked ? 'recall-locked-content is-locked' : 'recall-locked-content'}>
+              <HanziWriterCard hanzi={word.hanzi} />
+              {isRecallContentLocked ? (
+                <div className="recall-lock-overlay" aria-hidden="true">
+                  Reveal Chinese to unlock writing practice
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           {word.exampleSentence ? (
-            <div className="sentence-card" ref={sentenceCardRef}>
-              <div className="sentence-card-header">
-                <p className="sentence-kicker">Example sentence</p>
-                <button
-                  aria-controls={`sentence-detail-${word.id}`}
-                  aria-expanded={isSentenceExpanded}
-                  className="sentence-toggle"
-                  type="button"
-                  onClick={() => setIsSentenceExpanded((expanded) => !expanded)}
-                >
-                  {isSentenceExpanded ? 'Hide pinyin' : 'Show pinyin'}
-                </button>
+            <div className={isRecallContentLocked ? 'recall-locked-content is-locked' : 'recall-locked-content'}>
+              <div
+                aria-controls={`sentence-detail-${word.id}`}
+                aria-disabled={isRecallContentLocked}
+                aria-expanded={isSentenceExpanded}
+                className={isRecallContentLocked ? 'sentence-card is-disabled' : 'sentence-card'}
+                onClick={toggleSentenceDetail}
+                onKeyDown={handleSentenceCardKeyDown}
+                ref={sentenceCardRef}
+                role="button"
+                tabIndex={isRecallContentLocked ? -1 : 0}
+              >
+                <div className="sentence-card-header">
+                  <p className="sentence-kicker">Example sentence</p>
+                  <span className="sentence-toggle" aria-hidden="true">
+                    {isSentenceExpanded ? 'Hide pinyin' : 'Show pinyin'}
+                  </span>
+                </div>
+                <p className="sentence-hanzi">{word.exampleSentence.hanzi}</p>
+                {isSentenceExpanded ? (
+                  <div className="sentence-detail" id={`sentence-detail-${word.id}`}>
+                    <p className="sentence-pinyin">{word.exampleSentence.pinyin}</p>
+                    <p className="sentence-meaning" dir="auto">{sentenceMeaning}</p>
+                  </div>
+                ) : null}
               </div>
-              <p className="sentence-hanzi">{word.exampleSentence.hanzi}</p>
-              {isSentenceExpanded ? (
-                <div className="sentence-detail" id={`sentence-detail-${word.id}`}>
-                  <p className="sentence-pinyin">{word.exampleSentence.pinyin}</p>
-                  <p className="sentence-meaning" dir="auto">{sentenceMeaning}</p>
+              {isRecallContentLocked ? (
+                <div className="recall-lock-overlay" aria-hidden="true">
+                  Reveal Chinese to unlock the example
                 </div>
               ) : null}
             </div>
@@ -1491,7 +1575,7 @@ function DetailModal({
             <button
               aria-busy={isAudioPlaying}
               className={isAudioPlaying ? 'audio-button is-playing' : 'audio-button'}
-              disabled={!speechSupported}
+              disabled={!speechSupported || isRecallContentLocked}
               type="button"
               onClick={() => onSpeak(word)}
             >
@@ -1611,6 +1695,9 @@ function App() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterMode>('all');
   const [language, setLanguage] = useState<TranslationLanguage>(getInitialTranslationLanguage);
+  const [flashcardPromptMode, setFlashcardPromptMode] = useState<FlashcardPromptMode>(
+    getInitialFlashcardPromptMode,
+  );
   const [localizedMeanings, setLocalizedMeanings] = useState<LoadedLocalizedMeanings>({});
   const [selectedWord, setSelectedWord] = useState<HskWord | null>(null);
   const [pulsingWordId, setPulsingWordId] = useState<string | null>(null);
@@ -1664,6 +1751,10 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
   }, [language]);
+
+  useEffect(() => {
+    window.localStorage.setItem(FLASHCARD_PROMPT_MODE_STORAGE_KEY, flashcardPromptMode);
+  }, [flashcardPromptMode]);
 
   useEffect(() => {
     if (language === 'en' || !translationLevelsToLoad.length) {
@@ -2090,6 +2181,19 @@ function App() {
           ))}
         </div>
 
+        <div className="study-mode-tabs" role="group" aria-label="Flashcard prompt side">
+          {FLASHCARD_PROMPT_MODES.map((mode) => (
+            <button
+              className={flashcardPromptMode === mode.id ? 'active' : ''}
+              key={mode.id}
+              type="button"
+              onClick={() => setFlashcardPromptMode(mode.id)}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
+
         <div className="toolbar-meta">
           <span>
             {visibleCount} / {stats.total} shown
@@ -2287,6 +2391,7 @@ function App() {
           onClose={() => setSelectedWord(null)}
           onSetStatus={handleSetStatus}
           onSpeak={handleSpeak}
+          promptMode={flashcardPromptMode}
           isAudioPlaying={isAudioPlaying}
           sentenceMeaning={getSentenceMeaning(selectedWord, language, localizedMeanings)}
           speechMessage={speechMessage}

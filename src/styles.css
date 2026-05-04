@@ -70,7 +70,7 @@ input:focus-visible {
 .app-shell:has(.level-overview) .toolbar {
   position: relative;
   top: auto;
-  grid-template-columns: minmax(240px, 1fr) auto auto;
+  grid-template-columns: minmax(240px, 1fr) auto auto auto;
   margin-bottom: 14px;
   padding: 10px 12px;
 }
@@ -197,7 +197,7 @@ h1 {
   top: 0;
   z-index: 10;
   display: grid;
-  grid-template-columns: auto minmax(220px, 1fr) auto auto;
+  grid-template-columns: auto minmax(220px, 1fr) auto auto auto;
   gap: 8px;
   align-items: center;
   min-width: 0;
@@ -239,7 +239,8 @@ h1 {
 
 .level-tabs,
 .filter-tabs,
-.language-tabs {
+.language-tabs,
+.study-mode-tabs {
   display: flex;
   gap: 4px;
   min-width: 0;
@@ -255,6 +256,10 @@ h1 {
   background: #fff7d6;
 }
 
+.study-mode-tabs {
+  background: #dbeafe;
+}
+
 .language-tabs {
   grid-column: 1 / -1;
   gap: 6px;
@@ -264,6 +269,7 @@ h1 {
 }
 
 .filter-tabs button,
+.study-mode-tabs button,
 .language-tabs button,
 .level-tabs button,
 .reset-button,
@@ -274,6 +280,7 @@ h1 {
 }
 
 .filter-tabs button,
+.study-mode-tabs button,
 .language-tabs button,
 .level-tabs button {
   min-height: 34px;
@@ -334,12 +341,14 @@ h1 {
 }
 
 .filter-tabs button:hover,
+.study-mode-tabs button:hover,
 .language-tabs button:hover,
 .level-tabs button:hover {
   transform: translateY(-1px);
 }
 
 .filter-tabs button.active,
+.study-mode-tabs button.active,
 .language-tabs button.active,
 .level-tabs button.active {
   color: #111827;
@@ -895,6 +904,10 @@ h1 {
   perspective: 1200px;
 }
 
+.flashcard-stage {
+  position: relative;
+}
+
 .flashcard-face {
   grid-area: 1 / 1;
   display: grid;
@@ -946,6 +959,22 @@ h1 {
   color: #0f172a;
   font-size: clamp(2.5rem, 6vw, 4.5rem);
   line-height: 1.05;
+}
+
+.flashcard-front .modal-prompt-meaning {
+  max-width: 820px;
+  margin-top: 0;
+  color: #0f172a;
+  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  line-height: 1.05;
+}
+
+.flashcard-card.is-translation-first .flashcard-back .modal-meaning {
+  max-width: 780px;
+  margin-top: 12px;
+  color: #334155;
+  font-size: 1.1rem;
+  line-height: 1.25;
 }
 
 .flashcard-card.is-revealed .flashcard-front {
@@ -1021,6 +1050,40 @@ h1 {
 .modal-answer.is-visible {
   display: block;
   animation: answer-in 160ms ease both;
+}
+
+.recall-locked-content {
+  position: relative;
+  display: grid;
+}
+
+.recall-locked-content > .writing-card,
+.recall-locked-content > .sentence-card {
+  grid-area: 1 / 1;
+}
+
+.recall-locked-content.is-locked > .writing-card,
+.recall-locked-content.is-locked > .sentence-card {
+  pointer-events: none;
+  user-select: none;
+  filter: blur(11px);
+}
+
+.recall-lock-overlay {
+  position: absolute;
+  inset: 18px 0 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 8px;
+  color: #1e40af;
+  background: rgba(239, 246, 255, 0.78);
+  font-size: 0.88rem;
+  font-weight: 900;
+  text-align: center;
+  backdrop-filter: blur(4px);
 }
 
 .examples {
@@ -1290,6 +1353,27 @@ h1 {
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 8px;
   background: #f8fafc;
+  cursor: pointer;
+  transition:
+    border-color 170ms ease,
+    box-shadow 170ms ease,
+    transform 170ms ease;
+}
+
+.sentence-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(37, 99, 235, 0.24);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
+}
+
+.sentence-card.is-disabled {
+  cursor: default;
+}
+
+.sentence-card.is-disabled:hover {
+  transform: none;
+  border-color: rgba(148, 163, 184, 0.2);
+  box-shadow: none;
 }
 
 .sentence-card-header {
@@ -1309,6 +1393,8 @@ h1 {
 }
 
 .sentence-toggle {
+  display: inline-grid;
+  place-items: center;
   min-height: 32px;
   padding: 0 12px;
   border: 0;
@@ -1618,7 +1704,7 @@ h1 {
   }
 
   .toolbar {
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
   }
 
   .level-tabs {
@@ -1633,18 +1719,23 @@ h1 {
     grid-column: 2;
   }
 
+  .study-mode-tabs {
+    grid-column: 3;
+  }
+
   .language-tabs {
     grid-column: 1 / -1;
   }
 
   .level-tabs button,
   .filter-tabs button,
+  .study-mode-tabs button,
   .language-tabs button {
     flex: 0 0 auto;
   }
 
   .toolbar-meta {
-    grid-column: 3;
+    grid-column: 4;
     justify-content: end;
     flex-wrap: nowrap;
   }
@@ -1712,6 +1803,7 @@ h1 {
   .level-tabs,
   .search-field,
   .filter-tabs,
+  .study-mode-tabs,
   .language-tabs,
   .toolbar-meta {
     grid-column: 1;
@@ -1724,6 +1816,7 @@ h1 {
 
   .level-tabs,
   .filter-tabs,
+  .study-mode-tabs,
   .language-tabs {
     max-width: 100%;
     overflow-x: auto;
@@ -1731,6 +1824,7 @@ h1 {
 
   .level-tabs button,
   .filter-tabs button,
+  .study-mode-tabs button,
   .language-tabs button {
     flex: 0 0 auto;
   }
