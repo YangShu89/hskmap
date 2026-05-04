@@ -195,6 +195,75 @@ ${languageLinks}
       </main>`;
 }
 
+function renderLocalizedSeoGuide(view, locale, data) {
+  const guide = data.getLocalizedSeoGuide(locale.id, view);
+  const tableLabels = guide.tableLabels;
+  const rows = guide.rows
+    ? `<div class="hsk-guide-table-wrap">
+          <table class="hsk-guide-table">
+            <thead>
+              <tr>
+                <th>${escapeHtml(tableLabels.level)}</th>
+                <th>${escapeHtml(tableLabels.wordsAdded)}</th>
+                <th>${escapeHtml(tableLabels.cumulativeWords)}</th>
+                <th>${escapeHtml(tableLabels.studyFocus)}</th>
+              </tr>
+            </thead>
+            <tbody>
+${guide.rows
+  .map(
+    (row) => `              <tr>
+                <td><a href="${escapeHtml(data.getLocalizedPath(locale.id, row.level))}">${escapeHtml(row.label)}</a></td>
+                <td>${escapeHtml(row.newWords.toLocaleString(locale.htmlLang))}</td>
+                <td>${escapeHtml(row.cumulativeWords.toLocaleString(locale.htmlLang))}</td>
+                <td>${escapeHtml(row.focus)}</td>
+              </tr>`,
+  )
+  .join('\n')}
+            </tbody>
+          </table>
+        </div>`
+    : '';
+
+  const sections = guide.sections
+    .map(
+      (section) => `<article class="hsk-guide-section">
+          <h3>${escapeHtml(section.title)}</h3>
+${section.paragraphs.map((paragraph) => `          <p>${escapeHtml(paragraph)}</p>`).join('\n')}
+${
+  section.items
+    ? `          <ul>
+${section.items.map((item) => `            <li>${escapeHtml(item)}</li>`).join('\n')}
+          </ul>`
+    : ''
+}
+        </article>`,
+    )
+    .join('\n');
+
+  const faqs = guide.faqs
+    .map(
+      (faq) => `<article class="hsk-guide-faq-item">
+          <h3>${escapeHtml(faq.question)}</h3>
+          <p>${escapeHtml(faq.answer)}</p>
+        </article>`,
+    )
+    .join('\n');
+
+  return `        <section class="hsk-guide" aria-labelledby="hsk-guide-title">
+          <p class="hsk-guide-eyebrow">${escapeHtml(guide.eyebrow)}</p>
+          <h2 id="hsk-guide-title">${escapeHtml(guide.title)}</h2>
+          <p class="hsk-guide-intro">${escapeHtml(guide.intro)}</p>
+${rows}
+          <div class="hsk-guide-sections">
+${sections}
+          </div>
+          <div class="hsk-guide-faq" aria-label="${escapeHtml(guide.faqLabel)}">
+${faqs}
+          </div>
+        </section>`;
+}
+
 function renderHomePage(locale, data) {
   const levelCards = data.HSK_LEVELS.map((level) => {
     const words = data.HSK_WORDS_BY_LEVEL[level];
@@ -223,10 +292,7 @@ function renderHomePage(locale, data) {
         <section class="seo-level-grid" aria-label="HSK levels">
 ${levelCards}
         </section>
-        <section class="seo-copy-panel">
-          <h2>Learn HSK vocabulary visually</h2>
-          <p>HSKMAP keeps the interactive map as the first screen while this static content gives search engines direct access to each HSK level, vocabulary count, sample words, and learning features.</p>
-        </section>
+${renderLocalizedSeoGuide('all', locale, data)}
       </main>`;
 }
 
@@ -268,6 +334,7 @@ async function renderLevelPage(locale, level, data) {
           <p>${escapeHtml(data.getSeoIntro(locale.id, level))}</p>
           <p><a href="${escapeHtml(data.getLocalizedPath(locale.id))}">All HSK levels</a></p>
         </section>
+${renderLocalizedSeoGuide(level, locale, data)}
         <section class="seo-table-panel" aria-label="HSK ${level} vocabulary">
           <h2>HSK ${level} vocabulary list</h2>
           <div class="seo-table-scroll">

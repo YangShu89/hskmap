@@ -18,7 +18,9 @@ import { useProgress } from './hooks/useProgress';
 import {
   SEO_LOCALES,
   getAppRouteFromPath,
+  getLocalizedSeoGuide,
   getLocalizedPath,
+  getLocaleByLanguage,
   type HskView,
 } from './seo';
 import type { HskLevel, HskWord, ProgressMap, WordStatus } from './types';
@@ -277,6 +279,94 @@ function getVisibleWordGroups(selectedView: HskView, visibleWords: HskWord[]): V
     { startIndex: 0, words: visibleWords.slice(0, splitIndex) },
     { startIndex: splitIndex, words: visibleWords.slice(splitIndex) },
   ];
+}
+
+function LocalizedSeoGuide({
+  language,
+  onNavigate,
+  view,
+}: {
+  language: TranslationLanguage;
+  onNavigate: (view: HskView) => void;
+  view: HskView;
+}) {
+  const guide = getLocalizedSeoGuide(language, view);
+  const locale = getLocaleByLanguage(language);
+  const tableLabels = guide.tableLabels;
+
+  return (
+    <section className="hsk-guide" aria-labelledby="hsk-guide-title">
+      <p className="hsk-guide-eyebrow">{guide.eyebrow}</p>
+      <h2 id="hsk-guide-title">{guide.title}</h2>
+      <p className="hsk-guide-intro">{guide.intro}</p>
+
+      {guide.rows ? (
+        <div className="hsk-guide-table-wrap">
+          <table className="hsk-guide-table">
+            <thead>
+              <tr>
+                <th>{tableLabels?.level}</th>
+                <th>{tableLabels?.wordsAdded}</th>
+                <th>{tableLabels?.cumulativeWords}</th>
+                <th>{tableLabels?.studyFocus}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {guide.rows.map((row) => (
+                <tr key={row.level}>
+                  <td>
+                    <a
+                      href={getLocalizedPath(language, row.level)}
+                      onClick={(event) => {
+                        if (!shouldHandleRouteClick(event)) {
+                          return;
+                        }
+
+                        event.preventDefault();
+                        onNavigate(row.level);
+                      }}
+                    >
+                      {row.label}
+                    </a>
+                  </td>
+                  <td>{row.newWords.toLocaleString(locale.htmlLang)}</td>
+                  <td>{row.cumulativeWords.toLocaleString(locale.htmlLang)}</td>
+                  <td>{row.focus}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
+      <div className="hsk-guide-sections">
+        {guide.sections.map((section) => (
+          <article className="hsk-guide-section" key={section.title}>
+            <h3>{section.title}</h3>
+            {section.paragraphs.map((paragraph) => (
+              <p key={paragraph}>{paragraph}</p>
+            ))}
+            {section.items ? (
+              <ul>
+                {section.items.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            ) : null}
+          </article>
+        ))}
+      </div>
+
+      <div className="hsk-guide-faq" aria-label={guide.faqLabel}>
+        {guide.faqs.map((faq) => (
+          <article className="hsk-guide-faq-item" key={faq.question}>
+            <h3>{faq.question}</h3>
+            <p>{faq.answer}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function getTwoCharacterRows(value: string) {
@@ -2532,6 +2622,14 @@ function App() {
           )}
         </section>
       )}
+
+      {!wordDataError && !isWordDataLoading ? (
+        <LocalizedSeoGuide
+          language={language}
+          view={selectedView}
+          onNavigate={(nextView) => navigateToRoute(language, nextView)}
+        />
+      ) : null}
 
       {isResetDialogOpen ? (
         <ResetProgressDialog

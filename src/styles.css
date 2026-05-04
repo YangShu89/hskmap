@@ -297,6 +297,127 @@ h1 {
   line-height: 1.5;
 }
 
+.hsk-guide {
+  max-width: 1120px;
+  margin: 30px auto 0;
+  padding: 30px 0 8px;
+  border-top: 1px solid rgba(100, 116, 139, 0.2);
+}
+
+.hsk-guide-eyebrow {
+  margin-bottom: 7px;
+  color: #dc2626;
+  font-size: 0.76rem;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.hsk-guide h2 {
+  max-width: 840px;
+  margin-bottom: 12px;
+  color: #111827;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  line-height: 1;
+}
+
+.hsk-guide h3 {
+  margin: 0 0 8px;
+  color: #111827;
+  font-size: 1.08rem;
+  line-height: 1.25;
+}
+
+.hsk-guide-intro,
+.hsk-guide p,
+.hsk-guide li {
+  color: #475569;
+  font-size: 0.98rem;
+  font-weight: 650;
+  line-height: 1.7;
+}
+
+.hsk-guide-intro {
+  max-width: 880px;
+  margin-bottom: 0;
+}
+
+.hsk-guide a {
+  color: #1d4ed8;
+  font-weight: 900;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.hsk-guide-table-wrap {
+  margin-top: 20px;
+  overflow-x: auto;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 28px rgba(31, 41, 55, 0.07);
+}
+
+.hsk-guide-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.hsk-guide-table th,
+.hsk-guide-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.16);
+  text-align: left;
+  vertical-align: top;
+}
+
+.hsk-guide-table th {
+  color: #475569;
+  background: #f8fafc;
+  font-size: 0.76rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.hsk-guide-table td {
+  color: #334155;
+  font-size: 0.94rem;
+  font-weight: 650;
+  line-height: 1.55;
+}
+
+.hsk-guide-sections,
+.hsk-guide-faq {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.hsk-guide-section,
+.hsk-guide-faq-item {
+  padding: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 10px 28px rgba(31, 41, 55, 0.07);
+}
+
+.hsk-guide-section p:last-child,
+.hsk-guide-faq-item p:last-child,
+.hsk-guide-section ul:last-child {
+  margin-bottom: 0;
+}
+
+.hsk-guide-section ul {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0 0;
+  padding-left: 20px;
+}
+
 .progress-card {
   display: flex;
   flex-wrap: wrap;
@@ -2003,6 +2124,25 @@ h1 {
 
   .level-card-stats {
     grid-template-columns: 1fr;
+  }
+
+  .hsk-guide {
+    margin-top: 22px;
+    padding-top: 24px;
+  }
+
+  .hsk-guide h2 {
+    font-size: clamp(1.8rem, 9vw, 2.35rem);
+  }
+
+  .hsk-guide-sections,
+  .hsk-guide-faq {
+    grid-template-columns: 1fr;
+  }
+
+  .hsk-guide-section,
+  .hsk-guide-faq-item {
+    padding: 16px;
   }
 
   .poster-scroll {

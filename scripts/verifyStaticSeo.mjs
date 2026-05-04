@@ -46,11 +46,25 @@ async function main() {
     verifyCommon(homeHtml, `/${slug}/`);
     assert(homeHtml.includes(`hreflang="${hreflang}"`), `/${slug}/: missing self hreflang`);
     assert(homeHtml.includes(`lang="${hreflang}"`), `/${slug}/: missing html lang`);
+    assert(homeHtml.includes('class="hsk-guide"'), `/${slug}/: missing localized HSK guide`);
+    if (slug === 'en') {
+      assert(homeHtml.includes('HSK vocabulary from HSK 1 to HSK 6'), '/en/: missing English guide content');
+      assert(homeHtml.includes('How many words are in HSK 1 to HSK 6?'), '/en/: missing English FAQ content');
+    } else {
+      assert(!homeHtml.includes('Learn HSK vocabulary visually'), `/${slug}/: old generic SEO panel should not render`);
+    }
 
     for (let level = 1; level <= 6; level += 1) {
       const levelHtml = await readPage(slug, `hsk-${level}`);
       verifyCommon(levelHtml, `/${slug}/hsk-${level}/`);
       assert(levelHtml.includes('seo-vocab-table'), `/${slug}/hsk-${level}/: missing vocabulary table`);
+      assert(levelHtml.includes('class="hsk-guide"'), `/${slug}/hsk-${level}/: missing localized level guide`);
+      if (slug === 'en') {
+        assert(
+          levelHtml.includes(`HSK ${level} vocabulary guide`),
+          `/en/hsk-${level}/: missing English level guide`,
+        );
+      }
 
       if (level === 6 && slug !== 'en') {
         assert(
