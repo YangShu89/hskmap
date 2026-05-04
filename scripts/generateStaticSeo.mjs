@@ -176,6 +176,12 @@ function renderDocument({
   alternates,
   title,
 }) {
+  const rootBody = includeApp ? '' : `\n${body}\n    `;
+  const noscriptFallback = includeApp ? `
+    <noscript>
+${body}
+    </noscript>` : '';
+
   return `<!doctype html>
 <html lang="${escapeHtml(locale.htmlLang)}" dir="${escapeHtml(locale.direction)}"${includeApp ? ' class="app-loading"' : ''}>
   <head>
@@ -193,9 +199,7 @@ ${renderHead({
 })}
   </head>
   <body>
-    <div id="root">
-${body}
-    </div>
+    <div id="root">${rootBody}</div>${noscriptFallback}
   </body>
 </html>
 `;
