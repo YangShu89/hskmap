@@ -1,4 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { MandarinSpeechCopy } from '../uiCopy';
+
+const DEFAULT_SPEECH_COPY: MandarinSpeechCopy = {
+  audioUnavailable: 'Audio playback is not available in this browser.',
+  noMandarinVoice: 'No Mandarin voice is installed, so your browser will use its default voice.',
+  customAudioFallbackUnavailable: 'Custom audio could not play, and speech synthesis is not available in this browser.',
+  usingBrowserFallbackAudio: 'Using browser fallback audio.',
+  usingBrowserAudio: 'Using browser audio.',
+  audioCouldNotPlay: (error) => `Audio could not play: ${error}.`,
+};
+
+type SpeechError =
+  | { type: 'customAudioFallbackUnavailable' }
+  | { type: 'audioCouldNotPlay'; error: string };
+type SourceMessage = 'browserFallbackAudio' | 'browserAudio';
 
 function getVoices(): SpeechSynthesisVoice[] {
   if (!('speechSynthesis' in window)) {
@@ -34,10 +49,10 @@ function pickMandarinVoice(voices: SpeechSynthesisVoice[]) {
   return [...voices].sort((a, b) => getVoiceMatchScore(b) - getVoiceMatchScore(a))[0];
 }
 
-export function useMandarinSpeech() {
+export function useMandarinSpeech(copy: MandarinSpeechCopy = DEFAULT_SPEECH_COPY) {
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [lastError, setLastError] = useState<string | null>(null);
-  const [sourceMessage, setSourceMessage] = useState<string | null>(null);
+  const [lastError, setLastError] = useState<SpeechError | null>(null);
+  const [sourceMessage, setSourceMessage] = useState<SourceMessage | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const preloadedAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -70,23 +85,27 @@ export function useMandarinSpeech() {
 
   const message = useMemo(() => {
     if (!supported) {
-      return 'Audio playback is not available in this browser.';
+      return copy.audioUnavailable;
     }
 
     if (lastError) {
-      return lastError;
+      return lastError.type === 'customAudioFallbackUnavailable'
+        ? copy.customAudioFallbackUnavailable
+        : copy.audioCouldNotPlay(lastError.error);
     }
 
     if (sourceMessage) {
-      return sourceMessage;
+      return sourceMessage === 'browserFallbackAudio'
+        ? copy.usingBrowserFallbackAudio
+        : copy.usingBrowserAudio;
     }
 
     if (voices.length > 0 && !mandarinVoice) {
-      return 'No Mandarin voice is installed, so your browser will use its default voice.';
+      return copy.noMandarinVoice;
     }
 
     return null;
-  }, [lastError, mandarinVoice, sourceMessage, supported, voices.length]);
+  }, [copy, lastError, mandarinVoice, sourceMessage, supported, voices.length]);
 
   const stopCurrentAudio = useCallback(() => {
     playbackIdRef.current += 1;
@@ -154,11 +173,11 @@ export function useMandarinSpeech() {
 
       const speakWithBrowserVoice = () => {
         if (!browserSpeechSupported) {
-          setLastError('Custom audio could not play, and speech synthesis is not available in this browser.');
+          setLastError({ type: 'customAudioFallbackUnavailable' });
           return;
         }
 
-        setSourceMessage(audioSrc ? 'Using browser fallback audio.' : 'Using browser audio.');
+        setSourceMessage(audioSrc ? 'browserFallbackAudio' : 'browserAudio');
 
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = 'zh-CN';
@@ -178,7 +197,7 @@ export function useMandarinSpeech() {
         utterance.onerror = (event) => {
           if (playbackIdRef.current === playbackId) {
             setIsPlaying(false);
-            setLastError(`Audio could not play: ${event.error}.`);
+            setLastError({ type: 'audioCouldNotPlay', error: event.error });
           }
         };
 
@@ -246,7 +265,7 @@ export function useMandarinSpeech() {
 
       speakWithBrowserVoice();
     },
-    [audioElementSupported, browserSpeechSupported, mandarinVoice, stopCurrentAudio, supported],
+    [audioElementSupported, browserSpeechSupported, copy, mandarinVoice, stopCurrentAudio, supported],
   );
 
   return { isPlaying, message, preload, supported, speak };

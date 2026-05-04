@@ -11,6 +11,7 @@ import {
 import { useMandarinSpeech } from './hooks/useMandarinSpeech';
 import { useProgress } from './hooks/useProgress';
 import type { HskLevel, HskWord, ProgressMap, WordStatus } from './types';
+import { getUiCopy, type UiCopy } from './uiCopy';
 
 type FilterMode = 'all' | 'learning' | 'know' | 'unmarked';
 type FlashcardPromptMode = 'chinese' | 'translation';
@@ -114,20 +115,15 @@ const LEVEL_TEXT_COLORS: Record<HskLevel, string> = {
   5: '#eff6ff',
   6: '#fff1f2',
 };
-const VIEW_OPTIONS: { id: HskView; label: string; description: string }[] = [
-  { id: 'all', label: 'All HSK', description: `${ALL_WORDS.length} words` },
-  ...HSK_LEVEL_OPTIONS,
+const FILTERS: { id: FilterMode }[] = [
+  { id: 'all' },
+  { id: 'learning' },
+  { id: 'know' },
+  { id: 'unmarked' },
 ];
-
-const FILTERS: { id: FilterMode; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'learning', label: 'Review' },
-  { id: 'know', label: 'Known' },
-  { id: 'unmarked', label: 'Unmarked' },
-];
-const FLASHCARD_PROMPT_MODES: { id: FlashcardPromptMode; label: string }[] = [
-  { id: 'chinese', label: 'Chinese first' },
-  { id: 'translation', label: 'Translation first' },
+const FLASHCARD_PROMPT_MODES: { id: FlashcardPromptMode }[] = [
+  { id: 'chinese' },
+  { id: 'translation' },
 ];
 const FLASHCARD_PROMPT_MODE_STORAGE_KEY = 'hsk-flashcard-prompt-mode';
 const LANGUAGE_STORAGE_KEY = 'hsk-translation-language';
@@ -338,12 +334,12 @@ function getWritableCharacters(hanzi: string) {
   return Array.from(hanzi).filter((character) => /[\u3400-\u9fff]/u.test(character));
 }
 
-function getInitialPracticeFeedback(character: string): PracticeFeedback {
+function getInitialPracticeFeedback(character: string, ui: UiCopy): PracticeFeedback {
   return {
     completedStrokes: 0,
     currentStroke: 1,
     isComplete: false,
-    message: `Write ${character}`,
+    message: ui.writing.writeCharacter(character),
     totalMistakes: 0,
     totalStrokes: 0,
   };
@@ -638,6 +634,7 @@ interface CanvasWordMapProps {
   selectedViewLabel: string;
   language: TranslationLanguage;
   localizedMeanings: LoadedLocalizedMeanings;
+  ui: UiCopy;
   onSelectWord: (word: HskWord) => void;
 }
 
@@ -650,6 +647,7 @@ function CanvasWordMap({
   selectedViewLabel,
   language,
   localizedMeanings,
+  ui,
   onSelectWord,
 }: CanvasWordMapProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -986,7 +984,7 @@ function CanvasWordMap({
       onPointerMove={handleMapPointerMove}
       onPointerUp={handleMapPointerEnd}
       onWheel={handleMapWheel}
-      aria-label={`${selectedViewLabel} canvas word map`}
+      aria-label={ui.canvasWordMap(selectedViewLabel)}
       role="region"
     >
       <canvas
@@ -996,7 +994,7 @@ function CanvasWordMap({
         width={Math.max(1, viewportSize.width)}
         height={Math.max(1, viewportSize.height)}
       />
-      <div className="canvas-word-fallback sr-only" aria-label={`${selectedViewLabel} word list`}>
+      <div className="canvas-word-fallback sr-only" aria-label={ui.wordList(selectedViewLabel)}>
         {words.map((word) => (
           <button
             key={word.id}
@@ -1012,7 +1010,7 @@ function CanvasWordMap({
   );
 }
 
-function HanziWriterCard({ hanzi }: { hanzi: string }) {
+function HanziWriterCard({ hanzi, ui }: { hanzi: string; ui: UiCopy }) {
   const characters = useMemo(() => getWritableCharacters(hanzi), [hanzi]);
   const targetRefs = useRef<Array<HTMLDivElement | null>>([]);
   const writerRefs = useRef<Array<HanziWriter | null>>([]);
@@ -1026,8 +1024,8 @@ function HanziWriterCard({ hanzi }: { hanzi: string }) {
   const [completedCharacters, setCompletedCharacters] = useState<boolean[]>([]);
   const activePracticeCharacter = characters[practiceIndex] ?? characters[0] ?? '';
   const practiceFeedback = useMemo(
-    () => getInitialPracticeFeedback(activePracticeCharacter),
-    [activePracticeCharacter],
+    () => getInitialPracticeFeedback(activePracticeCharacter, ui),
+    [activePracticeCharacter, ui],
   );
   const [practiceState, setPracticeState] = useState<PracticeFeedback>(practiceFeedback);
   const completedPracticeCount = completedCharacters.filter(Boolean).length;
@@ -1045,12 +1043,12 @@ function HanziWriterCard({ hanzi }: { hanzi: string }) {
     setPracticeIndex(0);
     setPracticeResetKey(0);
     setCompletedCharacters(characters.map(() => false));
-    setPracticeState(getInitialPracticeFeedback(characters[0] ?? ''));
-  }, [characters, hanzi]);
+    setPracticeState(getInitialPracticeFeedback(characters[0] ?? '', ui));
+  }, [characters, hanzi, ui]);
 
   useEffect(() => {
-    setPracticeState(getInitialPracticeFeedback(activePracticeCharacter));
-  }, [activePracticeCharacter, practiceResetKey]);
+    setPracticeState(getInitialPracticeFeedback(activePracticeCharacter, ui));
+  }, [activePracticeCharacter, practiceResetKey, ui]);
 
   useEffect(() => {
     if (mode !== 'watch') {
@@ -1080,7 +1078,7 @@ function HanziWriterCard({ hanzi }: { hanzi: string }) {
         radicalColor: '#ef4444',
         highlightColor: '#facc15',
         onLoadCharDataError: () => {
-          setLoadError('Stroke data could not be loaded for this character.');
+          setLoadError(ui.writing.strokeDataError);
         },
       });
     });
@@ -1130,7 +1128,7 @@ function HanziWriterCard({ hanzi }: { hanzi: string }) {
         }));
       },
       onLoadCharDataError: () => {
-        setLoadError('Stroke data could not be loaded for this character.');
+        setLoadError(ui.writing.strokeDataError);
       },
     });
 
@@ -1141,7 +1139,7 @@ function HanziWriterCard({ hanzi }: { hanzi: string }) {
         setPracticeState({
           ...progress,
           isComplete: false,
-          message: 'Try that stroke again',
+          message: ui.writing.tryStrokeAgain,
           totalMistakes: strokeData.totalMistakes,
         });
       },
@@ -1150,7 +1148,7 @@ function HanziWriterCard({ hanzi }: { hanzi: string }) {
         setPracticeState({
           ...progress,
           isComplete: false,
-          message: 'Good stroke',
+          message: ui.writing.goodStroke,
           totalMistakes: strokeData.totalMistakes,
         });
       },
@@ -1165,8 +1163,8 @@ function HanziWriterCard({ hanzi }: { hanzi: string }) {
           isComplete: true,
           message:
             practiceIndex < characters.length - 1
-              ? `${summaryData.character} complete`
-              : 'Word complete',
+              ? ui.writing.characterComplete(summaryData.character)
+              : ui.writing.wordComplete,
           totalMistakes: summaryData.totalMistakes,
         }));
 
@@ -1185,7 +1183,7 @@ function HanziWriterCard({ hanzi }: { hanzi: string }) {
       target.replaceChildren();
       practiceWriterRef.current = null;
     };
-  }, [activePracticeCharacter, characters.length, mode, practiceIndex, practiceResetKey]);
+  }, [activePracticeCharacter, characters.length, mode, practiceIndex, practiceResetKey, ui]);
 
   const handleModeChange = useCallback(
     (nextMode: WritingMode) => {
@@ -1218,38 +1216,38 @@ function HanziWriterCard({ hanzi }: { hanzi: string }) {
   return (
     <div className={mode === 'practice' ? 'writing-card is-practice' : 'writing-card'}>
       <div className="writing-card-header">
-        <p className="writing-kicker">Stroke order</p>
+        <p className="writing-kicker">{ui.writing.strokeOrder}</p>
         <div className="writing-card-controls">
-          <div className="writing-mode-tabs" role="group" aria-label="Writing mode">
+          <div className="writing-mode-tabs" role="group" aria-label={ui.writing.writingMode}>
             <button
               className={mode === 'watch' ? 'active' : ''}
               type="button"
               onClick={() => handleModeChange('watch')}
             >
-              Watch
+              {ui.writing.watch}
             </button>
             <button
               className={mode === 'practice' ? 'active' : ''}
               type="button"
               onClick={() => handleModeChange('practice')}
             >
-              Practice
+              {ui.writing.practice}
             </button>
           </div>
           {mode === 'watch' ? (
             <button className="writing-replay" type="button" onClick={() => void animateCharacters()}>
-              Replay
+              {ui.writing.replay}
             </button>
           ) : (
             <button className="writing-replay" type="button" onClick={handlePracticeReset}>
-              Reset
+              {ui.writing.reset}
             </button>
           )}
         </div>
       </div>
 
       {mode === 'watch' ? (
-        <div className="writing-grid" aria-label={`Stroke order animation for ${hanzi}`}>
+        <div className="writing-grid" aria-label={ui.writing.strokeOrderAnimation(hanzi)}>
           {characters.map((character, index) => (
             <div className="writer-character" key={`${character}-${index}`}>
               <div
@@ -1257,7 +1255,7 @@ function HanziWriterCard({ hanzi }: { hanzi: string }) {
                 ref={(node) => {
                   targetRefs.current[index] = node;
                 }}
-                aria-label={`Animated stroke order for ${character}`}
+                aria-label={ui.writing.animatedStrokeOrder(character)}
               />
               <span>{character}</span>
             </div>
@@ -1269,7 +1267,7 @@ function HanziWriterCard({ hanzi }: { hanzi: string }) {
             <div>
               <span className="practice-word">{hanzi}</span>
               <span className="practice-step">
-                Character {practiceIndex + 1} / {characters.length}
+                {ui.writing.characterStep(practiceIndex + 1, characters.length)}
               </span>
             </div>
             <div className={practiceState.isComplete ? 'practice-message is-complete' : 'practice-message'}>
@@ -1283,11 +1281,11 @@ function HanziWriterCard({ hanzi }: { hanzi: string }) {
                 className="writer-target practice-target"
                 key={`${activePracticeCharacter}-${practiceIndex}-${practiceResetKey}`}
                 ref={practiceTargetRef}
-                aria-label={`Practice writing ${activePracticeCharacter}`}
+                aria-label={ui.writing.practiceWriting(activePracticeCharacter)}
               />
             </div>
             <div className="practice-sidebar">
-              <div className="practice-character-tabs" role="group" aria-label="Practice character">
+              <div className="practice-character-tabs" role="group" aria-label={ui.writing.practiceCharacter}>
                 {characters.map((character, index) => (
                   <button
                     className={[
@@ -1306,14 +1304,14 @@ function HanziWriterCard({ hanzi }: { hanzi: string }) {
               </div>
               <div className="practice-stats" aria-live="polite">
                 <span>
-                  Stroke {practiceState.totalStrokes ? practiceState.currentStroke : 0} /{' '}
-                  {practiceState.totalStrokes || '-'}
+                  {ui.writing.strokeProgress(
+                    practiceState.totalStrokes ? practiceState.currentStroke : 0,
+                    practiceState.totalStrokes || '-',
+                  )}
                 </span>
-                <span>{practiceState.completedStrokes} done</span>
-                <span>{practiceState.totalMistakes} mistakes</span>
-                <span>
-                  {completedPracticeCount} / {characters.length} characters
-                </span>
+                <span>{ui.writing.done(practiceState.completedStrokes)}</span>
+                <span>{ui.writing.mistakes(practiceState.totalMistakes)}</span>
+                <span>{ui.writing.characters(completedPracticeCount, characters.length)}</span>
               </div>
               <button
                 className="writing-hint"
@@ -1321,7 +1319,7 @@ function HanziWriterCard({ hanzi }: { hanzi: string }) {
                 type="button"
                 onClick={handlePracticeHint}
               >
-                Hint
+                {ui.writing.hint}
               </button>
             </div>
           </div>
@@ -1338,6 +1336,7 @@ function DetailModal({
   wordMeaning,
   sentenceMeaning,
   promptMode,
+  ui,
   status,
   isAudioPlaying,
   speechMessage,
@@ -1351,6 +1350,7 @@ function DetailModal({
   wordMeaning: string;
   sentenceMeaning: string;
   promptMode: FlashcardPromptMode;
+  ui: UiCopy;
   status?: WordStatus;
   isAudioPlaying: boolean;
   speechMessage: string | null;
@@ -1462,7 +1462,7 @@ function DetailModal({
         role="dialog"
       >
         <div className="modal-topbar">
-          <button className="modal-close" type="button" onClick={onClose} aria-label="Close details">
+          <button className="modal-close" type="button" onClick={onClose} aria-label={ui.closeDetails}>
             <span className="modal-close-mark" aria-hidden="true" />
           </button>
         </div>
@@ -1482,7 +1482,7 @@ function DetailModal({
               type="button"
             >
               <span className="flashcard-face flashcard-front" aria-hidden={isAnswerVisible}>
-                <span className="modal-kicker">HSK {word.level ?? 1} Word</span>
+                <span className="modal-kicker">{ui.hskWord(word.level ?? 1)}</span>
                 {isTranslationFirst ? (
                   <span className="modal-meaning modal-prompt-meaning" dir="auto">
                     {wordMeaning}
@@ -1491,11 +1491,11 @@ function DetailModal({
                   <span className="modal-hanzi">{word.hanzi}</span>
                 )}
                 <span className="flashcard-cue">
-                  {isTranslationFirst ? 'Reveal Chinese' : 'Reveal answer'}
+                  {isTranslationFirst ? ui.revealChinese : ui.revealAnswer}
                 </span>
               </span>
               <span className="flashcard-face flashcard-back" aria-hidden={!isAnswerVisible}>
-                <span className="modal-kicker">HSK {word.level ?? 1} Word</span>
+                <span className="modal-kicker">{ui.hskWord(word.level ?? 1)}</span>
                 {isTranslationFirst ? (
                   <>
                     <span className="modal-hanzi">{word.hanzi}</span>
@@ -1508,7 +1508,7 @@ function DetailModal({
                     <span className="modal-pinyin">{word.pinyin}</span>
                   </>
                 )}
-                <span className="flashcard-cue">Hide answer</span>
+                <span className="flashcard-cue">{ui.hideAnswer}</span>
               </span>
             </button>
           </div>
@@ -1525,10 +1525,10 @@ function DetailModal({
 
           {hasWritingAnimation ? (
             <div className={isRecallContentLocked ? 'recall-locked-content is-locked' : 'recall-locked-content'}>
-              <HanziWriterCard hanzi={word.hanzi} />
+              <HanziWriterCard hanzi={word.hanzi} ui={ui} />
               {isRecallContentLocked ? (
                 <div className="recall-lock-overlay" aria-hidden="true">
-                  Reveal Chinese to unlock writing practice
+                  {ui.unlockWriting}
                 </div>
               ) : null}
             </div>
@@ -1548,9 +1548,9 @@ function DetailModal({
                 tabIndex={isRecallContentLocked ? -1 : 0}
               >
                 <div className="sentence-card-header">
-                  <p className="sentence-kicker">Example sentence</p>
+                  <p className="sentence-kicker">{ui.exampleSentence}</p>
                   <span className="sentence-toggle" aria-hidden="true">
-                    {isSentenceExpanded ? 'Hide pinyin' : 'Show pinyin'}
+                    {isSentenceExpanded ? ui.hidePinyin : ui.showPinyin}
                   </span>
                 </div>
                 <p className="sentence-hanzi">{word.exampleSentence.hanzi}</p>
@@ -1563,7 +1563,7 @@ function DetailModal({
               </div>
               {isRecallContentLocked ? (
                 <div className="recall-lock-overlay" aria-hidden="true">
-                  Reveal Chinese to unlock the example
+                  {ui.unlockExample}
                 </div>
               ) : null}
             </div>
@@ -1584,7 +1584,7 @@ function DetailModal({
                 <span />
                 <span />
               </span>
-              <span>Play audio</span>
+              <span>{ui.playAudio}</span>
             </button>
             <div className={status ? 'modal-status-actions' : 'modal-status-actions is-unmarked'}>
               <button
@@ -1592,18 +1592,18 @@ function DetailModal({
                 type="button"
                 onClick={markForReview}
               >
-                Review Again
+                {ui.reviewAgain}
               </button>
               <button
                 className={status === 'know' ? 'status-action know active' : 'status-action know'}
                 type="button"
                 onClick={markAsKnown}
               >
-                I Know This
+                {ui.iKnowThis}
               </button>
               {status ? (
                 <button className="status-action muted" type="button" onClick={() => onClearStatus(word.id)}>
-                  Clear
+                  {ui.clear}
                 </button>
               ) : null}
             </div>
@@ -1621,6 +1621,7 @@ function ResetProgressDialog({
   learningCount,
   knownCount,
   totalCount,
+  ui,
   onCancel,
   onConfirm,
 }: {
@@ -1628,6 +1629,7 @@ function ResetProgressDialog({
   learningCount: number;
   knownCount: number;
   totalCount: number;
+  ui: UiCopy;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -1653,36 +1655,35 @@ function ResetProgressDialog({
         onWheel={(event) => event.stopPropagation()}
         role="dialog"
       >
-        <p className="reset-dialog-kicker">Reset progress</p>
-        <h2 id="reset-progress-title">Saved work will be gone</h2>
+        <p className="reset-dialog-kicker">{ui.resetDialog.kicker}</p>
+        <h2 id="reset-progress-title">{ui.resetDialog.title}</h2>
         <p id="reset-progress-description">
-          Resetting {label} will permanently remove your saved Known and Review marks for this
-          study set, including words hidden by search or filters.
+          {ui.resetDialog.description(label)}
         </p>
 
-        <div className="reset-dialog-summary" aria-label={`${label} saved progress summary`}>
+        <div className="reset-dialog-summary" aria-label={ui.resetDialog.summary(label)}>
           <span>
             <strong>{knownCount}</strong>
-            Known
+            {ui.resetDialog.known}
           </span>
           <span>
             <strong>{learningCount}</strong>
-            Review
+            {ui.resetDialog.review}
           </span>
           <span>
             <strong>{totalCount}</strong>
-            Words affected
+            {ui.resetDialog.wordsAffected}
           </span>
         </div>
 
-        <p className="reset-dialog-note">This cannot be undone.</p>
+        <p className="reset-dialog-note">{ui.resetDialog.note}</p>
 
         <div className="reset-dialog-actions">
           <button autoFocus className="reset-dialog-cancel" type="button" onClick={onCancel}>
-            Keep progress
+            {ui.resetDialog.keepProgress}
           </button>
           <button className="reset-dialog-confirm" type="button" onClick={onConfirm}>
-            Reset progress
+            {ui.resetDialog.resetProgress}
           </button>
         </div>
       </section>
@@ -1695,6 +1696,7 @@ function App() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterMode>('all');
   const [language, setLanguage] = useState<TranslationLanguage>(getInitialTranslationLanguage);
+  const ui = getUiCopy(language);
   const [flashcardPromptMode, setFlashcardPromptMode] = useState<FlashcardPromptMode>(
     getInitialFlashcardPromptMode,
   );
@@ -1732,9 +1734,23 @@ function App() {
     preload: preloadSpeechAudio,
     speak: speakMandarin,
     supported: speechSupported,
-  } = useMandarinSpeech();
+  } = useMandarinSpeech(ui.speech);
   const words = selectedView === 'all' ? ALL_WORDS : HSK_WORDS_BY_LEVEL[selectedView];
-  const selectedViewMeta = VIEW_OPTIONS.find((view) => view.id === selectedView) ?? VIEW_OPTIONS[0];
+  const viewOptions = useMemo(
+    () => [
+      { id: 'all' as const, label: ui.allHsk, description: ui.words(ALL_WORDS.length) },
+      ...HSK_LEVEL_OPTIONS.map((level) => ({
+        id: level.id,
+        label: level.label,
+        description:
+          level.id === 1
+            ? ui.words(HSK_WORDS_BY_LEVEL[level.id].length)
+            : ui.newWords(HSK_WORDS_BY_LEVEL[level.id].length),
+      })),
+    ],
+    [ui],
+  );
+  const selectedViewMeta = viewOptions.find((view) => view.id === selectedView) ?? viewOptions[0];
   const translationLevelsToLoad = useMemo(() => {
     if (language === 'en') {
       return [];
@@ -1857,7 +1873,7 @@ function App() {
       return {
         level: level.id,
         label: level.label,
-        description: level.description,
+        description: viewOptions.find((view) => view.id === level.id)?.description ?? '',
         total: levelWords.length,
         visibleWords,
         visibleCount: visibleWords.length,
@@ -1868,7 +1884,7 @@ function App() {
         textColor: LEVEL_TEXT_COLORS[level.id],
       };
     });
-  }, [filter, language, localizedMeanings, progress, search]);
+  }, [filter, language, localizedMeanings, progress, search, viewOptions]);
 
   const visibleCount =
     selectedView === 'all'
@@ -2114,35 +2130,35 @@ function App() {
   }, [commitMapCamera, levelGridRows, visibleCount]);
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" lang={ui.htmlLang} dir={ui.direction}>
       <header className="hero">
         <div>
-          <p className="eyebrow">Classic HSK 1-6 word maps</p>
+          <p className="eyebrow">{ui.classicMaps}</p>
           <h1>
             {selectedView === 'all'
-              ? 'All HSK Level Overview'
-              : `${selectedViewMeta.label} Tile Map`}
+              ? ui.allOverview
+              : ui.tileMap(selectedViewMeta.label)}
           </h1>
         </div>
-        <div className="progress-card" aria-label="Progress summary">
+        <div className="progress-card" aria-label={ui.progressSummary}>
           <div>
             <span className="progress-number">{stats.known}</span>
-            <span className="progress-label">Known</span>
+            <span className="progress-label">{ui.known}</span>
           </div>
           <div>
             <span className="progress-number">{stats.learning}</span>
-            <span className="progress-label">Review</span>
+            <span className="progress-label">{ui.review}</span>
           </div>
           <div>
             <span className="progress-number">{stats.unmarked}</span>
-            <span className="progress-label">Unmarked</span>
+            <span className="progress-label">{ui.unmarked}</span>
           </div>
         </div>
       </header>
 
-      <section className="toolbar" aria-label="Map controls">
-        <div className="level-tabs" role="group" aria-label="HSK level">
-          {VIEW_OPTIONS.map((view) => (
+      <section className="toolbar" aria-label={ui.mapControls}>
+        <div className="level-tabs" role="group" aria-label={ui.hskLevel}>
+          {viewOptions.map((view) => (
             <button
               className={selectedView === view.id ? 'active' : ''}
               key={view.id}
@@ -2159,16 +2175,16 @@ function App() {
         </div>
 
         <label className="search-field">
-          <span>Search</span>
+          <span>{ui.searchLabel}</span>
           <input
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Chinese, pinyin, or translation"
+            placeholder={ui.searchPlaceholder}
           />
         </label>
 
-        <div className="filter-tabs" role="group" aria-label="Progress filter">
+        <div className="filter-tabs" role="group" aria-label={ui.progressFilter}>
           {FILTERS.map((item) => (
             <button
               className={filter === item.id ? 'active' : ''}
@@ -2176,12 +2192,12 @@ function App() {
               type="button"
               onClick={() => setFilter(item.id)}
             >
-              {item.label}
+              {ui.filters[item.id]}
             </button>
           ))}
         </div>
 
-        <div className="study-mode-tabs" role="group" aria-label="Flashcard prompt side">
+        <div className="study-mode-tabs" role="group" aria-label={ui.flashcardPromptSide}>
           {FLASHCARD_PROMPT_MODES.map((mode) => (
             <button
               className={flashcardPromptMode === mode.id ? 'active' : ''}
@@ -2189,24 +2205,22 @@ function App() {
               type="button"
               onClick={() => setFlashcardPromptMode(mode.id)}
             >
-              {mode.label}
+              {ui.promptModes[mode.id]}
             </button>
           ))}
         </div>
 
         <div className="toolbar-meta">
-          <span>
-            {visibleCount} / {stats.total} shown
-          </span>
+          <span>{ui.shown(visibleCount, stats.total)}</span>
           <button className="reset-button" type="button" onClick={handleReset}>
-            Reset
+            {ui.reset}
           </button>
         </div>
 
-        <div className="language-tabs" role="group" aria-label="Translation language">
+        <div className="language-tabs" role="group" aria-label={ui.translationLanguage}>
           {LANGUAGE_OPTIONS.map((item) => (
             <button
-              aria-label={`Show translations in ${item.label}`}
+              aria-label={ui.showTranslationsIn(item.label)}
               className={language === item.id ? 'active' : ''}
               key={item.id}
               style={
@@ -2227,7 +2241,7 @@ function App() {
 
       {selectedView === 'all' ? (
         hasVisibleWords ? (
-          <section className="level-overview" aria-label="All HSK level overview">
+          <section className="level-overview" aria-label={ui.allHskOverview}>
             {levelOverview.map((level) => (
               <article
                 className={level.visibleCount ? 'level-card' : 'level-card is-empty'}
@@ -2251,23 +2265,23 @@ function App() {
                   <span className="level-card-kicker">{level.description}</span>
                   <span className="level-card-title">HSK {level.level}</span>
                   <span className="level-card-count">
-                    {level.visibleCount} / {level.total} shown
+                    {ui.levelCardCount(level.visibleCount, level.total)}
                   </span>
                 </button>
 
-                <div className="level-progress" aria-label={`HSK ${level.level} progress`}>
+                <div className="level-progress" aria-label={ui.levelProgress(level.level)}>
                   <span style={{ width: `${(level.known / level.total) * 100}%` }} />
                   <span style={{ width: `${(level.learning / level.total) * 100}%` }} />
                 </div>
 
                 <div className="level-card-stats">
-                  <span>{level.known} know</span>
-                  <span>{level.learning} learning</span>
-                  <span>{level.unmarked} unmarked</span>
+                  <span>{ui.levelKnown(level.known)}</span>
+                  <span>{ui.levelLearning(level.learning)}</span>
+                  <span>{ui.levelUnmarked(level.unmarked)}</span>
                 </div>
 
                 {level.visibleWords.length ? (
-                  <div className="level-word-preview" aria-label={`HSK ${level.level} matching words`}>
+                  <div className="level-word-preview" aria-label={ui.matchingWords(level.level)}>
                     {level.visibleWords.slice(0, 10).map((word) => (
                       <button
                         className={progress[word.id] ? `preview-word is-${progress[word.id]}` : 'preview-word'}
@@ -2280,19 +2294,19 @@ function App() {
                     ))}
                   </div>
                 ) : (
-                  <p className="level-empty-note">No matches in this level.</p>
+                  <p className="level-empty-note">{ui.noMatchesInLevel}</p>
                 )}
               </article>
             ))}
           </section>
         ) : (
           <div className="empty-state">
-            <h2>No words match this view.</h2>
-            <p>Try a different search or progress filter.</p>
+            <h2>{ui.noWordsMatch}</h2>
+            <p>{ui.tryDifferentSearch}</p>
           </div>
         )
       ) : (
-        <section className="map-shell" aria-label={`${selectedViewMeta.label} word map`}>
+        <section className="map-shell" aria-label={ui.wordMap(selectedViewMeta.label)}>
           {shouldUseCanvasMap && hasVisibleWords ? (
             <CanvasWordMap
               language={language}
@@ -2302,6 +2316,7 @@ function App() {
               progress={progress}
               pulsingWordId={pulsingWordId}
               selectedViewLabel={selectedViewMeta.label}
+              ui={ui}
               wordGroups={visibleWordGroups}
               words={visibleWords}
             />
@@ -2316,7 +2331,7 @@ function App() {
               onPointerMove={handleMapPointerMove}
               onPointerUp={handleMapPointerEnd}
               onWheel={handleMapWheel}
-              aria-label={`${selectedViewMeta.label} scrollable word map`}
+              aria-label={ui.scrollableWordMap(selectedViewMeta.label)}
               role="region"
               style={
                 {
@@ -2337,9 +2352,11 @@ function App() {
                         className="tile-grid level-word-grid"
                         aria-label={
                           isSplitWordGrid
-                            ? `${selectedViewMeta.label} words ${wordGroup.startIndex + 1}-${
-                                wordGroup.startIndex + wordGroup.words.length
-                              }`
+                            ? ui.wordRange(
+                                selectedViewMeta.label,
+                                wordGroup.startIndex + 1,
+                                wordGroup.startIndex + wordGroup.words.length,
+                              )
                             : selectedViewMeta.label
                         }
                         key={`${selectedViewMeta.label}-${groupIndex}`}
@@ -2365,8 +2382,8 @@ function App() {
                 </div>
               ) : (
                 <div className="empty-state">
-                  <h2>No words match this view.</h2>
-                  <p>Try a different search or progress filter.</p>
+                  <h2>{ui.noWordsMatch}</h2>
+                  <p>{ui.tryDifferentSearch}</p>
                 </div>
               )}
             </div>
@@ -2382,6 +2399,7 @@ function App() {
           onCancel={handleCancelReset}
           onConfirm={handleConfirmReset}
           totalCount={stats.total}
+          ui={ui}
         />
       ) : null}
 
@@ -2397,6 +2415,7 @@ function App() {
           speechMessage={speechMessage}
           speechSupported={speechSupported}
           status={progress[selectedWord.id]}
+          ui={ui}
           word={selectedWord}
           wordMeaning={getWordMeaning(selectedWord, language, localizedMeanings)}
         />
