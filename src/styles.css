@@ -418,6 +418,17 @@ h1 {
   padding-left: 20px;
 }
 
+.site-disclaimer {
+  max-width: 1120px;
+  margin: 18px auto 0;
+  padding-top: 14px;
+  border-top: 1px solid rgba(100, 116, 139, 0.16);
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
 .progress-card {
   display: flex;
   flex-wrap: wrap;
@@ -2253,7 +2264,7 @@ h1 {
 
   .poster-board {
     display: grid;
-    gap: 12px;
+    gap: 0;
     padding: calc(var(--tile-size) * 0.162);
   }
 

@@ -79,7 +79,7 @@ interface PracticeFeedback {
 }
 
 const DEFAULT_ZOOM = 1;
-const MIN_ZOOM = 0.08;
+const MIN_ZOOM = 0.04;
 const MAX_ZOOM = 36;
 const ZOOM_SENSITIVITY = 0.0015;
 const WHEEL_DELTA_THRESHOLD = 0.5;
@@ -2610,11 +2610,17 @@ function App() {
       )}
 
       {!wordDataError && !isWordDataLoading ? (
-        <LocalizedSeoGuide
-          language={language}
-          view={selectedView}
-          onNavigate={(nextView) => navigateToRoute(language, nextView)}
-        />
+        <>
+          <LocalizedSeoGuide
+            language={language}
+            view={selectedView}
+            onNavigate={(nextView) => navigateToRoute(language, nextView)}
+          />
+          <p className="site-disclaimer">
+            HSKMap is an independent study tool and is not affiliated with Chinese Testing International
+            or the official HSK exam.
+          </p>
+        </>
       ) : null}
 
       {isResetDialogOpen ? (
