@@ -29,6 +29,7 @@ export interface UiCopy {
   unmarked: string;
   progressSummary: string;
   mapControls: string;
+  menuLabel: string;
   hskLevel: string;
   progressFilter: string;
   flashcardPromptSide: string;
@@ -123,6 +124,7 @@ const UI_COPY: Record<TranslationLanguage, UiCopy> = {
     unmarked: 'Unmarked',
     progressSummary: 'Progress summary',
     mapControls: 'Map controls',
+    menuLabel: 'Menu',
     hskLevel: 'HSK level',
     progressFilter: 'Progress filter',
     flashcardPromptSide: 'Flashcard prompt side',
@@ -223,6 +225,7 @@ const UI_COPY: Record<TranslationLanguage, UiCopy> = {
     unmarked: 'Sin marcar',
     progressSummary: 'Resumen de progreso',
     mapControls: 'Controles del mapa',
+    menuLabel: 'Menú',
     hskLevel: 'Nivel HSK',
     progressFilter: 'Filtro de progreso',
     flashcardPromptSide: 'Lado inicial de la tarjeta',
@@ -323,6 +326,7 @@ const UI_COPY: Record<TranslationLanguage, UiCopy> = {
     unmarked: 'Non marqués',
     progressSummary: 'Résumé de progression',
     mapControls: 'Contrôles de la carte',
+    menuLabel: 'Menu',
     hskLevel: 'Niveau HSK',
     progressFilter: 'Filtre de progression',
     flashcardPromptSide: 'Face initiale de la carte',
@@ -423,6 +427,7 @@ const UI_COPY: Record<TranslationLanguage, UiCopy> = {
     unmarked: 'Без метки',
     progressSummary: 'Сводка прогресса',
     mapControls: 'Управление картой',
+    menuLabel: 'Меню',
     hskLevel: 'Уровень HSK',
     progressFilter: 'Фильтр прогресса',
     flashcardPromptSide: 'Первая сторона карточки',
@@ -523,6 +528,7 @@ const UI_COPY: Record<TranslationLanguage, UiCopy> = {
     unmarked: 'Sem marca',
     progressSummary: 'Resumo do progresso',
     mapControls: 'Controles do mapa',
+    menuLabel: 'Menu',
     hskLevel: 'Nível HSK',
     progressFilter: 'Filtro de progresso',
     flashcardPromptSide: 'Lado inicial do cartão',
@@ -623,6 +629,7 @@ const UI_COPY: Record<TranslationLanguage, UiCopy> = {
     unmarked: 'Unmarkiert',
     progressSummary: 'Fortschrittsübersicht',
     mapControls: 'Kartensteuerung',
+    menuLabel: 'Menü',
     hskLevel: 'HSK-Stufe',
     progressFilter: 'Fortschrittsfilter',
     flashcardPromptSide: 'Startseite der Karte',
@@ -723,6 +730,7 @@ const UI_COPY: Record<TranslationLanguage, UiCopy> = {
     unmarked: '未マーク',
     progressSummary: '進捗サマリー',
     mapControls: 'マップ操作',
+    menuLabel: 'メニュー',
     hskLevel: 'HSKレベル',
     progressFilter: '進捗フィルター',
     flashcardPromptSide: 'カードの開始面',
@@ -823,6 +831,7 @@ const UI_COPY: Record<TranslationLanguage, UiCopy> = {
     unmarked: '미표시',
     progressSummary: '진도 요약',
     mapControls: '지도 컨트롤',
+    menuLabel: '메뉴',
     hskLevel: 'HSK 레벨',
     progressFilter: '진도 필터',
     flashcardPromptSide: '카드 시작 면',
@@ -923,6 +932,7 @@ const UI_COPY: Record<TranslationLanguage, UiCopy> = {
     unmarked: 'Chưa đánh dấu',
     progressSummary: 'Tóm tắt tiến độ',
     mapControls: 'Điều khiển bản đồ',
+    menuLabel: 'Trình đơn',
     hskLevel: 'Cấp HSK',
     progressFilter: 'Bộ lọc tiến độ',
     flashcardPromptSide: 'Mặt bắt đầu của thẻ',
@@ -1023,6 +1033,7 @@ const UI_COPY: Record<TranslationLanguage, UiCopy> = {
     unmarked: 'Belum ditandai',
     progressSummary: 'Ringkasan progres',
     mapControls: 'Kontrol peta',
+    menuLabel: 'Menu',
     hskLevel: 'Level HSK',
     progressFilter: 'Filter progres',
     flashcardPromptSide: 'Sisi awal kartu',
@@ -1123,6 +1134,7 @@ const UI_COPY: Record<TranslationLanguage, UiCopy> = {
     unmarked: 'غير محددة',
     progressSummary: 'ملخص التقدم',
     mapControls: 'أدوات التحكم بالخريطة',
+    menuLabel: 'القائمة',
     hskLevel: 'مستوى HSK',
     progressFilter: 'مرشح التقدم',
     flashcardPromptSide: 'وجه البطاقة الأول',

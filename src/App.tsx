@@ -1990,6 +1990,7 @@ function App() {
   const [wordDataError, setWordDataError] = useState<string | null>(null);
   const [selectedWord, setSelectedWord] = useState<HskWord | null>(null);
   const [pulsingWordId, setPulsingWordId] = useState<string | null>(null);
+  const [isMobileControlsOpen, setIsMobileControlsOpen] = useState(false);
   const [mapCamera, setMapCamera] = useState<MapCamera>({
     panX: 0,
     panY: 0,
@@ -2262,6 +2263,7 @@ function App() {
     selectedView === 'all'
       ? levelOverview.reduce((count, level) => count + level.visibleCount, 0)
       : visibleWords.length;
+  const activeLanguage = LANGUAGE_OPTIONS.find((item) => item.id === language) ?? LANGUAGE_OPTIONS[0];
   const hasVisibleWords = visibleCount > 0;
   const isModalOpen = Boolean(selectedWord) || isResetDialogOpen;
   const visibleWordGroups = useMemo(
@@ -2643,7 +2645,7 @@ function App() {
       </header>
 
       <section
-        className="toolbar"
+        className={isMobileControlsOpen ? 'toolbar is-mobile-open' : 'toolbar'}
         aria-label={ui.mapControls}
         data-map-pan-ignore="true"
         onPointerDownCapture={handleToolbarPointerDownCapture}
@@ -2669,75 +2671,101 @@ function App() {
           ))}
         </div>
 
-        <label className="search-field">
-          <span>{ui.searchLabel}</span>
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder={ui.searchPlaceholder}
-          />
-        </label>
-
-        <div className="filter-tabs" role="group" aria-label={ui.progressFilter}>
-          {FILTERS.map((item) => (
-            <button
-              className={filter === item.id ? 'active' : ''}
-              key={item.id}
-              type="button"
-              onClick={() => setFilter(item.id)}
-            >
-              {ui.filters[item.id]}
-            </button>
-          ))}
-        </div>
-
-        <div className="study-mode-tabs" role="group" aria-label={ui.flashcardPromptSide}>
-          {FLASHCARD_PROMPT_MODES.map((mode) => (
-            <button
-              className={flashcardPromptMode === mode.id ? 'active' : ''}
-              key={mode.id}
-              type="button"
-              onClick={() => setFlashcardPromptMode(mode.id)}
-            >
-              {ui.promptModes[mode.id]}
-            </button>
-          ))}
-        </div>
-
-        <div className="toolbar-meta">
-          <span>{ui.shown(visibleCount, stats.total)}</span>
-          <button className="reset-button" type="button" onClick={handleReset}>
-            {ui.reset}
+        <div className="mobile-toolbar-summary">
+          <div className="mobile-toolbar-status">
+            <span>{selectedViewMeta.label}</span>
+            <span>{ui.shown(visibleCount, stats.total)}</span>
+            <span>{ui.filters[filter]}</span>
+            <span>{activeLanguage.flag}</span>
+          </div>
+          <button
+            aria-controls="mobile-controls-panel"
+            aria-expanded={isMobileControlsOpen}
+            aria-label={ui.menuLabel}
+            className="mobile-controls-toggle"
+            type="button"
+            onClick={() => setIsMobileControlsOpen((isOpen) => !isOpen)}
+          >
+            <span className="mobile-controls-icon" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+            <span className="mobile-controls-label">{ui.menuLabel}</span>
           </button>
         </div>
 
-        <div className="language-tabs" role="group" aria-label={ui.translationLanguage}>
-          {LANGUAGE_OPTIONS.map((item) => (
-            <a
-              aria-label={ui.showTranslationsIn(item.label)}
-              className={language === item.id ? 'active' : ''}
-              href={getLocalizedPath(item.id, selectedView)}
-              key={item.id}
-              style={
-                {
-                  '--language-accent': item.accent,
-                  '--language-tint': item.tint,
-                } as React.CSSProperties
-              }
-              onClick={(event) => {
-                if (!shouldHandleRouteClick(event)) {
-                  return;
-                }
+        <div className="mobile-control-panel" id="mobile-controls-panel">
+          <label className="search-field">
+            <span>{ui.searchLabel}</span>
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={ui.searchPlaceholder}
+            />
+          </label>
 
-                event.preventDefault();
-                navigateToRoute(item.id, selectedView);
-              }}
-            >
-              <span className="language-flag" aria-hidden="true">{item.flag}</span>
-              <span>{item.label}</span>
-            </a>
-          ))}
+          <div className="filter-tabs" role="group" aria-label={ui.progressFilter}>
+            {FILTERS.map((item) => (
+              <button
+                className={filter === item.id ? 'active' : ''}
+                key={item.id}
+                type="button"
+                onClick={() => setFilter(item.id)}
+              >
+                {ui.filters[item.id]}
+              </button>
+            ))}
+          </div>
+
+          <div className="study-mode-tabs" role="group" aria-label={ui.flashcardPromptSide}>
+            {FLASHCARD_PROMPT_MODES.map((mode) => (
+              <button
+                className={flashcardPromptMode === mode.id ? 'active' : ''}
+                key={mode.id}
+                type="button"
+                onClick={() => setFlashcardPromptMode(mode.id)}
+              >
+                {ui.promptModes[mode.id]}
+              </button>
+            ))}
+          </div>
+
+          <div className="toolbar-meta">
+            <span>{ui.shown(visibleCount, stats.total)}</span>
+            <button className="reset-button" type="button" onClick={handleReset}>
+              {ui.reset}
+            </button>
+          </div>
+
+          <div className="language-tabs" role="group" aria-label={ui.translationLanguage}>
+            {LANGUAGE_OPTIONS.map((item) => (
+              <a
+                aria-label={ui.showTranslationsIn(item.label)}
+                className={language === item.id ? 'active' : ''}
+                href={getLocalizedPath(item.id, selectedView)}
+                key={item.id}
+                style={
+                  {
+                    '--language-accent': item.accent,
+                    '--language-tint': item.tint,
+                  } as React.CSSProperties
+                }
+                onClick={(event) => {
+                  if (!shouldHandleRouteClick(event)) {
+                    return;
+                  }
+
+                  event.preventDefault();
+                  navigateToRoute(item.id, selectedView);
+                }}
+              >
+                <span className="language-flag" aria-hidden="true">{item.flag}</span>
+                <span>{item.label}</span>
+              </a>
+            ))}
+          </div>
         </div>
       </section>
 

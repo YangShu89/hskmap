@@ -494,6 +494,14 @@ h1 {
   touch-action: pan-y;
 }
 
+.mobile-toolbar-summary {
+  display: none;
+}
+
+.mobile-control-panel {
+  display: contents;
+}
+
 .search-field {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -2174,14 +2182,17 @@ h1 {
 }
 @media (max-width: 720px) {
   .app-shell {
-    width: min(100% - 20px, 1500px);
-    padding-top: 16px;
+    width: min(100% - 12px, 1500px);
+    padding-top: 6px;
+  }
+
+  .app-shell:has(.level-overview) {
+    width: min(100% - 12px, 1500px);
+    padding-top: 6px;
   }
 
   .hero {
-    grid-template-columns: 1fr;
-    min-height: auto;
-    padding-top: 8px;
+    display: none;
   }
 
   .progress-card {
@@ -2191,16 +2202,142 @@ h1 {
 
   .toolbar {
     grid-template-columns: 1fr;
+    gap: 6px;
     top: 0;
+    margin-bottom: 6px;
+    padding: 6px;
   }
 
-  .level-tabs,
+  .app-shell:has(.level-overview) .toolbar {
+    gap: 6px;
+    margin-bottom: 6px;
+    padding: 6px;
+  }
+
+  .mobile-toolbar-summary,
   .search-field,
   .filter-tabs,
   .study-mode-tabs,
   .language-tabs,
   .toolbar-meta {
     grid-column: 1;
+  }
+
+  .mobile-toolbar-summary {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+    min-width: 0;
+    padding: 4px 5px 4px 8px;
+    border-radius: 8px;
+    background: #f8fafc;
+  }
+
+  .mobile-toolbar-status {
+    display: flex;
+    flex: 1 1 auto;
+    gap: 6px;
+    align-items: center;
+    min-width: 0;
+    color: #64748b;
+    font-size: 0.76rem;
+    font-weight: 850;
+  }
+
+  .mobile-toolbar-status span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-toolbar-status span:first-child {
+    flex: 0 0 auto;
+    color: #111827;
+  }
+
+  .mobile-controls-toggle {
+    display: inline-flex;
+    flex: 0 0 auto;
+    gap: 7px;
+    align-items: center;
+    justify-content: center;
+    max-width: 42%;
+    min-height: 32px;
+    overflow: hidden;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 7px;
+    color: #1d4ed8;
+    background: #dbeafe;
+    font-size: 0.78rem;
+    font-weight: 900;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-controls-icon {
+    position: relative;
+    display: block;
+    flex: 0 0 auto;
+    width: 17px;
+    height: 14px;
+  }
+
+  .mobile-controls-icon span {
+    position: absolute;
+    right: 1px;
+    left: 1px;
+    height: 2px;
+    border-radius: 999px;
+    background: currentColor;
+  }
+
+  .mobile-controls-icon span::after {
+    position: absolute;
+    top: 50%;
+    width: 5px;
+    height: 5px;
+    border-radius: 999px;
+    background: currentColor;
+    content: "";
+    transform: translateY(-50%);
+  }
+
+  .mobile-controls-icon span:nth-child(1) {
+    top: 1px;
+  }
+
+  .mobile-controls-icon span:nth-child(1)::after {
+    left: 2px;
+  }
+
+  .mobile-controls-icon span:nth-child(2) {
+    top: 6px;
+  }
+
+  .mobile-controls-icon span:nth-child(2)::after {
+    right: 2px;
+  }
+
+  .mobile-controls-icon span:nth-child(3) {
+    top: 11px;
+  }
+
+  .mobile-controls-icon span:nth-child(3)::after {
+    left: 6px;
+  }
+
+  .mobile-control-panel {
+    display: none;
+    grid-column: 1;
+    gap: 7px;
+    min-width: 0;
+  }
+
+  .toolbar.is-mobile-open .mobile-control-panel {
+    display: grid;
   }
 
   .search-field {
@@ -2216,11 +2353,31 @@ h1 {
     overflow-x: auto;
   }
 
+  .level-tabs {
+    padding: 2px;
+    scrollbar-width: none;
+  }
+
+  .level-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
   .level-tabs a,
   .filter-tabs button,
   .study-mode-tabs button,
   .language-tabs a {
     flex: 0 0 auto;
+  }
+
+  .level-tabs a {
+    min-width: 86px;
+    min-height: 40px;
+    padding: 4px 10px;
+    font-size: 0.8rem;
+  }
+
+  .level-tabs a small {
+    font-size: 0.58rem;
   }
 
   .toolbar-meta {
@@ -2261,7 +2418,7 @@ h1 {
   }
 
   .poster-scroll {
-    height: 62svh;
+    height: max(420px, calc(100svh - 118px));
   }
 
   .poster-board {
@@ -2339,5 +2496,17 @@ h1 {
   .practice-target {
     width: min(220px, 100%);
     height: min(220px, calc(100vw - 80px));
+  }
+}
+
+@media (max-width: 380px) {
+  .mobile-controls-toggle {
+    width: 36px;
+    max-width: none;
+    padding: 0;
+  }
+
+  .mobile-controls-label {
+    display: none;
   }
 }
