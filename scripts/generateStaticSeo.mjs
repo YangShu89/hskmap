@@ -93,6 +93,7 @@ function renderHead({
   assets,
   canonical,
   description,
+  headScript = '',
   includeApp,
   jsonLd,
   locale,
@@ -126,6 +127,7 @@ ${alternates
     <meta name="twitter:title" content="${escapeHtml(title)}" />
     <meta name="twitter:description" content="${escapeHtml(description)}" />
     <script type="application/ld+json">${escapeScriptJson(jsonLd)}</script>
+${headScript}
     ${includeApp ? assets.app : assets.css}`;
 }
 
@@ -134,6 +136,7 @@ function renderDocument({
   body,
   canonical,
   description,
+  headScript,
   includeApp = true,
   jsonLd,
   locale,
@@ -148,6 +151,7 @@ ${renderHead({
   assets,
   canonical,
   description,
+  headScript,
   includeApp,
   jsonLd,
   locale,
@@ -173,6 +177,83 @@ async function writePage(pathname, html) {
 
   await fs.mkdir(path.dirname(outputFile), { recursive: true });
   await fs.writeFile(outputFile, html);
+}
+
+function renderRootLanguageRedirectScript(data) {
+  const routes = data.SEO_LOCALES.map((locale) => ({
+    id: locale.id,
+    path: data.getLocalizedPath(locale.id),
+  }));
+
+  return `    <script>
+(function () {
+  var routes = ${escapeScriptJson(routes)};
+  var fallbackPath = ${escapeScriptJson(data.getLocalizedPath('en'))};
+  var storageKey = 'hsk-translation-language';
+
+  function normalize(value) {
+    return String(value || '').toLowerCase();
+  }
+
+  function routeForLanguage(value) {
+    var normalized = normalize(value);
+    if (!normalized) {
+      return null;
+    }
+
+    for (var i = 0; i < routes.length; i += 1) {
+      if (normalize(routes[i].id) === normalized) {
+        return routes[i].path;
+      }
+    }
+
+    var primary = normalized.split('-')[0];
+    if (primary === 'pt') {
+      for (var ptIndex = 0; ptIndex < routes.length; ptIndex += 1) {
+        if (normalize(routes[ptIndex].id) === 'pt-br') {
+          return routes[ptIndex].path;
+        }
+      }
+    }
+
+    for (var primaryIndex = 0; primaryIndex < routes.length; primaryIndex += 1) {
+      if (normalize(routes[primaryIndex].id).split('-')[0] === primary) {
+        return routes[primaryIndex].path;
+      }
+    }
+
+    return null;
+  }
+
+  var targetPath = null;
+
+  try {
+    targetPath = routeForLanguage(window.localStorage.getItem(storageKey));
+  } catch (error) {
+  }
+
+  if (!targetPath && window.navigator) {
+    var languages = window.navigator.languages && window.navigator.languages.length
+      ? window.navigator.languages
+      : [window.navigator.language || window.navigator.userLanguage];
+
+    for (var languageIndex = 0; languageIndex < languages.length; languageIndex += 1) {
+      targetPath = routeForLanguage(languages[languageIndex]);
+      if (targetPath) {
+        break;
+      }
+    }
+  }
+
+  if (!targetPath) {
+    targetPath = fallbackPath;
+  }
+
+  if (targetPath && window.location.pathname !== targetPath) {
+    window.location.replace(targetPath + window.location.search + window.location.hash);
+  }
+}());
+    </script>`;
 }
 
 function renderRootHub(data) {
@@ -400,6 +481,7 @@ async function generatePages(data, assets) {
       body: renderRootHub(data),
       canonical: getCanonical('/', data),
       description: rootDescription,
+      headScript: renderRootLanguageRedirectScript(data),
       includeApp: false,
       jsonLd: getJsonLd({
         canonical: getCanonical('/', data),
