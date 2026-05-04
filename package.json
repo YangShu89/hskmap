@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/generateStaticSeo.mjs",
     "preview": "vite preview",
+    "seo:generate": "node scripts/generateStaticSeo.mjs",
+    "seo:verify": "node scripts/verifyStaticSeo.mjs",
     "audio:hsk": "node scripts/generateHskAudio.mjs",
     "audio:hsk1": "node scripts/generateHskAudio.mjs --levels=1",
     "audio:hsk6": "node scripts/generateHskAudio.mjs --levels=6 --kind=words"

@@ -1,0 +1,17 @@
+{
+  "name": "HSKMAP",
+  "short_name": "HSKMAP",
+  "description": "Visual HSK 1-6 Chinese vocabulary maps with pinyin, audio, translations, writing practice, and local progress.",
+  "start_url": "/en/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fff8ed",
+  "theme_color": "#f7b718",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "64x64",
+      "type": "image/svg+xml"
+    }
+  ]
+}

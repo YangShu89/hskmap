@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import HanziWriter, { type StrokeData } from 'hanzi-writer';
-import { HSK_LEVEL_OPTIONS, HSK_WORDS_BY_LEVEL } from './data/hsk';
+import {
+  HSK_LEVEL_OPTIONS,
+  HSK_LEVEL_WORD_COUNTS,
+  HSK_LEVELS,
+} from './data/hskMetadata';
+import { loadHskLevels } from './data/hskLoaders';
 import {
   getAvailableLocalizedLevels,
   loadLocalizedMeanings,
@@ -10,12 +15,17 @@ import {
 } from './data/translationLoaders';
 import { useMandarinSpeech } from './hooks/useMandarinSpeech';
 import { useProgress } from './hooks/useProgress';
+import {
+  SEO_LOCALES,
+  getAppRouteFromPath,
+  getLocalizedPath,
+  type HskView,
+} from './seo';
 import type { HskLevel, HskWord, ProgressMap, WordStatus } from './types';
 import { getUiCopy, type UiCopy } from './uiCopy';
 
 type FilterMode = 'all' | 'learning' | 'know' | 'unmarked';
 type FlashcardPromptMode = 'chinese' | 'translation';
-type HskView = HskLevel | 'all';
 type WritingMode = 'watch' | 'practice';
 
 interface MapCamera {
@@ -77,7 +87,10 @@ const TILE_BOARD_PADDING_RATIO = 0.324;
 const MIN_VISIBLE_MAP_EDGE = 96;
 const HSK4_WORD_MAP_SPLIT_INDEX = 300;
 const CANVAS_OVERSCAN_TILES = 2;
-const ALL_WORDS = HSK_LEVEL_OPTIONS.flatMap((level) => HSK_WORDS_BY_LEVEL[level.id]);
+const ALL_WORD_COUNT = HSK_LEVELS.reduce(
+  (count, level) => count + HSK_LEVEL_WORD_COUNTS[level],
+  0,
+);
 const TILE_COLORS = {
   default: {
     fill: '#f7b718',
@@ -127,25 +140,7 @@ const FLASHCARD_PROMPT_MODES: { id: FlashcardPromptMode }[] = [
 ];
 const FLASHCARD_PROMPT_MODE_STORAGE_KEY = 'hsk-flashcard-prompt-mode';
 const LANGUAGE_STORAGE_KEY = 'hsk-translation-language';
-const LANGUAGE_OPTIONS: {
-  id: TranslationLanguage;
-  label: string;
-  flag: string;
-  accent: string;
-  tint: string;
-}[] = [
-  { id: 'en', label: 'English', flag: '🇺🇸', accent: '#2563eb', tint: '#eff6ff' },
-  { id: 'es', label: 'Español', flag: '🇪🇸', accent: '#dc2626', tint: '#fff7ed' },
-  { id: 'fr', label: 'Français', flag: '🇫🇷', accent: '#1d4ed8', tint: '#eff6ff' },
-  { id: 'ru', label: 'Русский', flag: '🇷🇺', accent: '#b91c1c', tint: '#fef2f2' },
-  { id: 'pt-BR', label: 'Português', flag: '🇧🇷', accent: '#15803d', tint: '#f0fdf4' },
-  { id: 'de', label: 'Deutsch', flag: '🇩🇪', accent: '#ca8a04', tint: '#fefce8' },
-  { id: 'ja', label: '日本語', flag: '🇯🇵', accent: '#dc2626', tint: '#fff1f2' },
-  { id: 'ko', label: '한국어', flag: '🇰🇷', accent: '#1d4ed8', tint: '#eff6ff' },
-  { id: 'vi', label: 'Tiếng Việt', flag: '🇻🇳', accent: '#dc2626', tint: '#fff7ed' },
-  { id: 'id', label: 'Indonesia', flag: '🇮🇩', accent: '#dc2626', tint: '#fef2f2' },
-  { id: 'ar', label: 'العربية', flag: '🇸🇦', accent: '#15803d', tint: '#f0fdf4' },
-];
+const LANGUAGE_OPTIONS = SEO_LOCALES;
 const WRITING_PRACTICE_LEVELS = new Set<HskLevel>([1, 2, 3, 4, 5, 6]);
 
 function normalize(value: string) {
@@ -157,15 +152,36 @@ function normalize(value: string) {
     .replace(/v/g, 'u:');
 }
 
+function getInitialAppRoute() {
+  if (typeof window === 'undefined') {
+    return getAppRouteFromPath('/');
+  }
+
+  return getAppRouteFromPath(window.location.pathname);
+}
+
+function getInitialSelectedView(): HskView {
+  return getInitialAppRoute().view;
+}
+
 function getInitialTranslationLanguage(): TranslationLanguage {
   if (typeof window === 'undefined') {
     return 'en';
+  }
+
+  const initialRoute = getInitialAppRoute();
+  if (initialRoute.isLocalizedRoute) {
+    return initialRoute.language;
   }
 
   const storedLanguage = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
   return LANGUAGE_OPTIONS.some((option) => option.id === storedLanguage)
     ? (storedLanguage as TranslationLanguage)
     : 'en';
+}
+
+function shouldHandleRouteClick(event: React.MouseEvent<HTMLElement>) {
+  return !(event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey);
 }
 
 function getInitialFlashcardPromptMode(): FlashcardPromptMode {
@@ -1692,7 +1708,7 @@ function ResetProgressDialog({
 }
 
 function App() {
-  const [selectedView, setSelectedView] = useState<HskView>('all');
+  const [selectedView, setSelectedView] = useState<HskView>(getInitialSelectedView);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterMode>('all');
   const [language, setLanguage] = useState<TranslationLanguage>(getInitialTranslationLanguage);
@@ -1701,6 +1717,8 @@ function App() {
     getInitialFlashcardPromptMode,
   );
   const [localizedMeanings, setLocalizedMeanings] = useState<LoadedLocalizedMeanings>({});
+  const [wordsByLevel, setWordsByLevel] = useState<Partial<Record<HskLevel, HskWord[]>>>({});
+  const [wordDataError, setWordDataError] = useState<string | null>(null);
   const [selectedWord, setSelectedWord] = useState<HskWord | null>(null);
   const [pulsingWordId, setPulsingWordId] = useState<string | null>(null);
   const [mapCamera, setMapCamera] = useState<MapCamera>({
@@ -1735,17 +1753,44 @@ function App() {
     speak: speakMandarin,
     supported: speechSupported,
   } = useMandarinSpeech(ui.speech);
-  const words = selectedView === 'all' ? ALL_WORDS : HSK_WORDS_BY_LEVEL[selectedView];
+  const navigateToRoute = useCallback((nextLanguage: TranslationLanguage, nextView: HskView) => {
+    setLanguage(nextLanguage);
+    setSelectedView(nextView);
+    setSelectedWord(null);
+
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const nextPath = getLocalizedPath(nextLanguage, nextView);
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({ hskmap: true }, '', nextPath);
+    }
+  }, []);
+  const levelsToLoad = useMemo<readonly HskLevel[]>(
+    () => (selectedView === 'all' ? HSK_LEVELS : [selectedView]),
+    [selectedView],
+  );
+  const isWordDataLoading = levelsToLoad.some((level) => !wordsByLevel[level]) && !wordDataError;
+  const selectedViewWordCount =
+    selectedView === 'all' ? ALL_WORD_COUNT : HSK_LEVEL_WORD_COUNTS[selectedView];
+  const words = useMemo(
+    () =>
+      selectedView === 'all'
+        ? HSK_LEVELS.flatMap((level) => wordsByLevel[level] ?? [])
+        : wordsByLevel[selectedView] ?? [],
+    [selectedView, wordsByLevel],
+  );
   const viewOptions = useMemo(
     () => [
-      { id: 'all' as const, label: ui.allHsk, description: ui.words(ALL_WORDS.length) },
+      { id: 'all' as const, label: ui.allHsk, description: ui.words(ALL_WORD_COUNT) },
       ...HSK_LEVEL_OPTIONS.map((level) => ({
         id: level.id,
         label: level.label,
         description:
           level.id === 1
-            ? ui.words(HSK_WORDS_BY_LEVEL[level.id].length)
-            : ui.newWords(HSK_WORDS_BY_LEVEL[level.id].length),
+            ? ui.words(HSK_LEVEL_WORD_COUNTS[level.id])
+            : ui.newWords(HSK_LEVEL_WORD_COUNTS[level.id]),
       })),
     ],
     [ui],
@@ -1765,12 +1810,67 @@ function App() {
   }, [language, selectedView]);
 
   useEffect(() => {
+    let ignoreLoad = false;
+    setWordDataError(null);
+
+    loadHskLevels(levelsToLoad)
+      .then((loadedLevels) => {
+        if (ignoreLoad) {
+          return;
+        }
+
+        setWordsByLevel((current) => {
+          let didChange = false;
+          const next = { ...current };
+
+          for (const level of levelsToLoad) {
+            if (loadedLevels[level] && current[level] !== loadedLevels[level]) {
+              next[level] = loadedLevels[level];
+              didChange = true;
+            }
+          }
+
+          return didChange ? next : current;
+        });
+      })
+      .catch((error: unknown) => {
+        if (ignoreLoad) {
+          return;
+        }
+
+        console.error('Could not load HSK word data.', error);
+        setWordDataError(error instanceof Error ? error.message : 'Unknown loading error');
+      });
+
+    return () => {
+      ignoreLoad = true;
+    };
+  }, [levelsToLoad]);
+
+  useEffect(() => {
     window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
   }, [language]);
 
   useEffect(() => {
     window.localStorage.setItem(FLASHCARD_PROMPT_MODE_STORAGE_KEY, flashcardPromptMode);
   }, [flashcardPromptMode]);
+
+  useEffect(() => {
+    document.documentElement.lang = ui.htmlLang;
+    document.documentElement.dir = ui.direction;
+  }, [ui.direction, ui.htmlLang]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const nextRoute = getAppRouteFromPath(window.location.pathname);
+      setLanguage(nextRoute.language);
+      setSelectedView(nextRoute.view);
+      setSelectedWord(null);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   useEffect(() => {
     if (language === 'en' || !translationLevelsToLoad.length) {
@@ -1836,10 +1936,10 @@ function App() {
     return {
       known,
       learning,
-      unmarked: words.length - known - learning,
-      total: words.length,
+      unmarked: Math.max(selectedViewWordCount - known - learning, 0),
+      total: selectedViewWordCount,
     };
-  }, [progress, words]);
+  }, [progress, selectedViewWordCount, words]);
 
   const visibleWords = useMemo(() => {
     if (selectedView === 'all') {
@@ -1853,7 +1953,8 @@ function App() {
 
   const levelOverview = useMemo(() => {
     return HSK_LEVEL_OPTIONS.map((level) => {
-      const levelWords = HSK_WORDS_BY_LEVEL[level.id];
+      const levelWords = wordsByLevel[level.id] ?? [];
+      const total = HSK_LEVEL_WORD_COUNTS[level.id];
       const visibleWords = levelWords.filter((word) =>
         isWordVisible(word, search, filter, progress[word.id], language, localizedMeanings),
       );
@@ -1874,17 +1975,17 @@ function App() {
         level: level.id,
         label: level.label,
         description: viewOptions.find((view) => view.id === level.id)?.description ?? '',
-        total: levelWords.length,
+        total,
         visibleWords,
         visibleCount: visibleWords.length,
         known,
         learning,
-        unmarked: levelWords.length - known - learning,
+        unmarked: Math.max(total - known - learning, 0),
         accent: LEVEL_ACCENTS[level.id],
         textColor: LEVEL_TEXT_COLORS[level.id],
       };
     });
-  }, [filter, language, localizedMeanings, progress, search, viewOptions]);
+  }, [filter, language, localizedMeanings, progress, search, viewOptions, wordsByLevel]);
 
   const visibleCount =
     selectedView === 'all'
@@ -2159,18 +2260,22 @@ function App() {
       <section className="toolbar" aria-label={ui.mapControls}>
         <div className="level-tabs" role="group" aria-label={ui.hskLevel}>
           {viewOptions.map((view) => (
-            <button
+            <a
               className={selectedView === view.id ? 'active' : ''}
+              href={getLocalizedPath(language, view.id)}
               key={view.id}
-              type="button"
-              onClick={() => {
-                setSelectedView(view.id);
-                setSelectedWord(null);
+              onClick={(event) => {
+                if (!shouldHandleRouteClick(event)) {
+                  return;
+                }
+
+                event.preventDefault();
+                navigateToRoute(language, view.id);
               }}
             >
               <span>{view.label}</span>
               <small>{view.description}</small>
-            </button>
+            </a>
           ))}
         </div>
 
@@ -2211,6 +2316,20 @@ function App() {
         </div>
 
         <div className="toolbar-meta">
+          <a
+            className="brand-mark"
+            href={getLocalizedPath(language)}
+            onClick={(event) => {
+              if (!shouldHandleRouteClick(event)) {
+                return;
+              }
+
+              event.preventDefault();
+              navigateToRoute(language, 'all');
+            }}
+          >
+            HSKMAP
+          </a>
           <span>{ui.shown(visibleCount, stats.total)}</span>
           <button className="reset-button" type="button" onClick={handleReset}>
             {ui.reset}
@@ -2219,9 +2338,10 @@ function App() {
 
         <div className="language-tabs" role="group" aria-label={ui.translationLanguage}>
           {LANGUAGE_OPTIONS.map((item) => (
-            <button
+            <a
               aria-label={ui.showTranslationsIn(item.label)}
               className={language === item.id ? 'active' : ''}
+              href={getLocalizedPath(item.id, selectedView)}
               key={item.id}
               style={
                 {
@@ -2229,17 +2349,33 @@ function App() {
                   '--language-tint': item.tint,
                 } as React.CSSProperties
               }
-              type="button"
-              onClick={() => setLanguage(item.id)}
+              onClick={(event) => {
+                if (!shouldHandleRouteClick(event)) {
+                  return;
+                }
+
+                event.preventDefault();
+                navigateToRoute(item.id, selectedView);
+              }}
             >
               <span className="language-flag" aria-hidden="true">{item.flag}</span>
               <span>{item.label}</span>
-            </button>
+            </a>
           ))}
         </div>
       </section>
 
-      {selectedView === 'all' ? (
+      {wordDataError ? (
+        <div className="empty-state" role="alert">
+          <h2>Could not load HSK words.</h2>
+          <p>{wordDataError}</p>
+        </div>
+      ) : isWordDataLoading ? (
+        <div className="empty-state" aria-busy="true">
+          <h2>{selectedView === 'all' ? ui.allHskOverview : ui.wordMap(selectedViewMeta.label)}</h2>
+          <p>{ui.shown(words.length, selectedViewWordCount)}</p>
+        </div>
+      ) : selectedView === 'all' ? (
         hasVisibleWords ? (
           <section className="level-overview" aria-label={ui.allHskOverview}>
             {levelOverview.map((level) => (
@@ -2253,13 +2389,19 @@ function App() {
                   } as React.CSSProperties
                 }
               >
-                <button
+                <a
+                  aria-disabled={!level.visibleCount}
                   className="level-card-main"
-                  disabled={!level.visibleCount}
-                  type="button"
-                  onClick={() => {
-                    setSelectedView(level.level);
-                    setSelectedWord(null);
+                  href={getLocalizedPath(language, level.level)}
+                  tabIndex={level.visibleCount ? undefined : -1}
+                  onClick={(event) => {
+                    if (!level.visibleCount || !shouldHandleRouteClick(event)) {
+                      event.preventDefault();
+                      return;
+                    }
+
+                    event.preventDefault();
+                    navigateToRoute(language, level.level);
                   }}
                 >
                   <span className="level-card-kicker">{level.description}</span>
@@ -2267,7 +2409,7 @@ function App() {
                   <span className="level-card-count">
                     {ui.levelCardCount(level.visibleCount, level.total)}
                   </span>
-                </button>
+                </a>
 
                 <div className="level-progress" aria-label={ui.levelProgress(level.level)}>
                   <span style={{ width: `${(level.known / level.total) * 100}%` }} />

@@ -81,11 +81,11 @@ async function parseHsk1Words() {
 }
 
 async function parseRawLevelWords(level) {
-  const source = await readFile(path.join(repoRoot, 'src/data/hsk.ts'), 'utf8');
-  const startMarker = `const HSK${level}_RAW = \``;
+  const source = await readFile(path.join(repoRoot, `src/data/hsk${level}Raw.ts`), 'utf8');
+  const startMarker = `export const HSK${level}_RAW = \``;
   const startIndex = source.indexOf(startMarker);
   if (startIndex === -1) {
-    throw new Error(`Could not find HSK${level}_RAW in src/data/hsk.ts.`);
+    throw new Error(`Could not find HSK${level}_RAW in src/data/hsk${level}Raw.ts.`);
   }
 
   const rawStart = startIndex + startMarker.length;
@@ -131,7 +131,7 @@ function parseJoinedRawArray(source, exportName) {
 }
 
 async function parseJoinedRawLevelWords(level) {
-  const source = await readFile(path.join(repoRoot, 'src/data/hsk56.ts'), 'utf8');
+  const source = await readFile(path.join(repoRoot, `src/data/hsk${level}Raw.ts`), 'utf8');
 
   return parseJoinedRawArray(source, `HSK${level}_RAW`)
     .map((line, index) => {

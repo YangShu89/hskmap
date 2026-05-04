@@ -60,23 +60,20 @@ function slugify(value) {
 }
 
 function expectedHsk6Words() {
-  const hsk56 = read('src/data/hsk56.ts');
-  return parseArrayRaw(hsk56, 'HSK6_RAW').map((word, index) => ({
+  return parseArrayRaw(read('src/data/hsk6Raw.ts'), 'HSK6_RAW').map((word, index) => ({
     ...word,
     id: `hsk6-${slugify(word.pinyin || word.hanzi)}-${index + 1}`,
   }));
 }
 
 function lexicon() {
-  const hskTs = read('src/data/hsk.ts');
-  const hsk56 = read('src/data/hsk56.ts');
   const words = [
     ...parseHsk1Words(read('src/data/hsk1.ts')),
-    ...parseTemplateRaw(hskTs, 'HSK2_RAW'),
-    ...parseTemplateRaw(hskTs, 'HSK3_RAW'),
-    ...parseTemplateRaw(hskTs, 'HSK4_RAW'),
-    ...parseArrayRaw(hsk56, 'HSK5_RAW'),
-    ...parseArrayRaw(hsk56, 'HSK6_RAW'),
+    ...parseTemplateRaw(read('src/data/hsk2Raw.ts'), 'HSK2_RAW'),
+    ...parseTemplateRaw(read('src/data/hsk3Raw.ts'), 'HSK3_RAW'),
+    ...parseTemplateRaw(read('src/data/hsk4Raw.ts'), 'HSK4_RAW'),
+    ...parseArrayRaw(read('src/data/hsk5Raw.ts'), 'HSK5_RAW'),
+    ...parseArrayRaw(read('src/data/hsk6Raw.ts'), 'HSK6_RAW'),
   ];
 
   const terms = new Set();
