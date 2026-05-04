@@ -2406,20 +2406,6 @@ function App() {
         </div>
 
         <div className="toolbar-meta">
-          <a
-            className="brand-mark"
-            href={getLocalizedPath(language)}
-            onClick={(event) => {
-              if (!shouldHandleRouteClick(event)) {
-                return;
-              }
-
-              event.preventDefault();
-              navigateToRoute(language, 'all');
-            }}
-          >
-            HSKMAP
-          </a>
           <span>{ui.shown(visibleCount, stats.total)}</span>
           <button className="reset-button" type="button" onClick={handleReset}>
             {ui.reset}
