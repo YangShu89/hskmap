@@ -491,6 +491,7 @@ h1 {
   background: rgba(255, 255, 255, 0.92);
   box-shadow: 0 12px 36px rgba(31, 41, 55, 0.1);
   backdrop-filter: blur(18px);
+  touch-action: pan-y;
 }
 
 .search-field {
@@ -533,6 +534,7 @@ h1 {
   border-radius: 8px;
   background: #eef2f7;
   scrollbar-width: thin;
+  touch-action: pan-x pan-y;
 }
 
 .level-tabs {

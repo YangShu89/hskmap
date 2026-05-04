@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import HanziWriter, { type StrokeData } from 'hanzi-writer';
 import {
   HSK_LEVEL_OPTIONS,
@@ -67,6 +67,20 @@ interface MapDragState {
   startPanX: number;
   startPanY: number;
   didMove: boolean;
+}
+
+interface MapPointerPosition {
+  clientX: number;
+  clientY: number;
+}
+
+interface MapPinchState {
+  centerX: number;
+  centerY: number;
+  startDistance: number;
+  startPanX: number;
+  startPanY: number;
+  startScale: number;
 }
 
 interface PracticeFeedback {
@@ -184,6 +198,10 @@ function getInitialTranslationLanguage(): TranslationLanguage {
 
 function shouldHandleRouteClick(event: React.MouseEvent<HTMLElement>) {
   return !(event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey);
+}
+
+function isIgnoredMapPanTarget(target: EventTarget | null) {
+  return target instanceof Element && Boolean(target.closest('[data-map-pan-ignore="true"]'));
 }
 
 function getInitialFlashcardPromptMode(): FlashcardPromptMode {
@@ -546,6 +564,59 @@ function getWheelAdjustedCamera({
   };
 }
 
+function getPointerDistance(firstPointer: MapPointerPosition, secondPointer: MapPointerPosition) {
+  return Math.hypot(firstPointer.clientX - secondPointer.clientX, firstPointer.clientY - secondPointer.clientY);
+}
+
+function getPointerPair(activePointers: Map<number, MapPointerPosition>) {
+  const pointerPair = Array.from(activePointers.values()).slice(0, 2);
+  return pointerPair.length === 2 ? pointerPair : null;
+}
+
+function getViewportCenter(
+  viewport: HTMLElement,
+  firstPointer: MapPointerPosition,
+  secondPointer: MapPointerPosition,
+) {
+  const rect = viewport.getBoundingClientRect();
+
+  return {
+    x: (firstPointer.clientX + secondPointer.clientX) / 2 - rect.left - viewport.clientLeft,
+    y: (firstPointer.clientY + secondPointer.clientY) / 2 - rect.top - viewport.clientTop,
+  };
+}
+
+function getPinchAdjustedCamera({
+  currentCenterX,
+  currentCenterY,
+  currentDistance,
+  pinch,
+}: {
+  currentCenterX: number;
+  currentCenterY: number;
+  currentDistance: number;
+  pinch: MapPinchState;
+}) {
+  if (pinch.startDistance <= 0) {
+    return {
+      panX: pinch.startPanX,
+      panY: pinch.startPanY,
+      scale: pinch.startScale,
+    };
+  }
+
+  const startScale = Math.max(pinch.startScale, 0.001);
+  const nextScale = clampZoom(startScale * (currentDistance / pinch.startDistance));
+  const mapX = (pinch.centerX - pinch.startPanX) / startScale;
+  const mapY = (pinch.centerY - pinch.startPanY) / startScale;
+
+  return {
+    panX: currentCenterX - mapX * nextScale,
+    panY: currentCenterY - mapY * nextScale,
+    scale: nextScale,
+  };
+}
+
 function getWordMapLayout(wordGroups: VisibleWordGroup[], levelGridRows: number) {
   const padding = TILE_BASE_SIZE * TILE_BOARD_PADDING_RATIO;
   const rowCount = Math.max(levelGridRows, 1);
@@ -774,6 +845,8 @@ function CanvasWordMap({
     startPanY: 0,
     didMove: false,
   });
+  const activePointersRef = useRef(new Map<number, MapPointerPosition>());
+  const pinchStateRef = useRef<MapPinchState | null>(null);
   const pulseStartRef = useRef(0);
   const [mapCamera, setMapCamera] = useState<MapCamera>({
     panX: 0,
@@ -873,8 +946,51 @@ function CanvasWordMap({
     event.preventDefault();
   }, []);
 
+  const startPinchGesture = useCallback((viewport: HTMLElement) => {
+    const pointerPair = getPointerPair(activePointersRef.current);
+    if (!pointerPair) {
+      return false;
+    }
+
+    const [firstPointer, secondPointer] = pointerPair;
+    const center = getViewportCenter(viewport, firstPointer, secondPointer);
+    const startDistance = getPointerDistance(firstPointer, secondPointer);
+    if (startDistance <= 0) {
+      return false;
+    }
+
+    pinchStateRef.current = {
+      centerX: center.x,
+      centerY: center.y,
+      startDistance,
+      startPanX: mapCameraRef.current.panX,
+      startPanY: mapCameraRef.current.panY,
+      startScale: mapCameraRef.current.scale,
+    };
+    dragStateRef.current = {
+      ...dragStateRef.current,
+      active: false,
+      captured: false,
+      didMove: false,
+    };
+    didDragRef.current = true;
+    setHoveredWordId(null);
+    viewport.classList.add('is-panning');
+    return true;
+  }, []);
+
   const handleMapPointerDown = useCallback((event: React.PointerEvent<HTMLElement>) => {
-    if (event.button !== 0) {
+    if (event.button !== 0 || isIgnoredMapPanTarget(event.target)) {
+      return;
+    }
+
+    activePointersRef.current.set(event.pointerId, {
+      clientX: event.clientX,
+      clientY: event.clientY,
+    });
+
+    if (activePointersRef.current.size >= 2 && startPinchGesture(event.currentTarget)) {
+      event.preventDefault();
       return;
     }
 
@@ -893,6 +1009,44 @@ function CanvasWordMap({
 
   const handleMapPointerMove = useCallback(
     (event: React.PointerEvent<HTMLElement>) => {
+      if (activePointersRef.current.has(event.pointerId)) {
+        activePointersRef.current.set(event.pointerId, {
+          clientX: event.clientX,
+          clientY: event.clientY,
+        });
+      }
+
+      if (activePointersRef.current.size >= 2) {
+        const pointerPair = getPointerPair(activePointersRef.current);
+        if (!pointerPair) {
+          return;
+        }
+
+        if (!pinchStateRef.current && !startPinchGesture(event.currentTarget)) {
+          return;
+        }
+
+        const pinch = pinchStateRef.current;
+        if (!pinch) {
+          return;
+        }
+
+        const [firstPointer, secondPointer] = pointerPair;
+        const currentCenter = getViewportCenter(event.currentTarget, firstPointer, secondPointer);
+        event.preventDefault();
+        didDragRef.current = true;
+        setHoveredWordId(null);
+        commitMapCamera(
+          getPinchAdjustedCamera({
+            currentCenterX: currentCenter.x,
+            currentCenterY: currentCenter.y,
+            currentDistance: getPointerDistance(firstPointer, secondPointer),
+            pinch,
+          }),
+        );
+        return;
+      }
+
       const dragState = dragStateRef.current;
       if (!dragState.active || dragState.pointerId !== event.pointerId) {
         updateHoveredWord(event);
@@ -926,10 +1080,33 @@ function CanvasWordMap({
         dragState.startPanY = nextCamera.panY;
       }
     },
-    [commitMapCamera, updateHoveredWord],
+    [commitMapCamera, startPinchGesture, updateHoveredWord],
   );
 
   const handleMapPointerEnd = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    const wasPinching = Boolean(pinchStateRef.current);
+    activePointersRef.current.delete(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    if (wasPinching) {
+      if (activePointersRef.current.size < 2) {
+        pinchStateRef.current = null;
+        dragStateRef.current = {
+          ...dragStateRef.current,
+          active: false,
+          captured: false,
+          didMove: false,
+        };
+        event.currentTarget.classList.remove('is-panning');
+        window.setTimeout(() => {
+          didDragRef.current = false;
+        }, 0);
+      }
+      return;
+    }
+
     const dragState = dragStateRef.current;
     if (!dragState.active || dragState.pointerId !== event.pointerId) {
       return;
@@ -937,10 +1114,6 @@ function CanvasWordMap({
 
     dragStateRef.current = { ...dragState, active: false };
     event.currentTarget.classList.remove('is-panning');
-    if (dragState.captured && event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-
     if (dragState.didMove) {
       window.setTimeout(() => {
         didDragRef.current = false;
@@ -949,7 +1122,7 @@ function CanvasWordMap({
   }, []);
 
   const handleMapPointerLeave = useCallback(() => {
-    if (!dragStateRef.current.active) {
+    if (!dragStateRef.current.active && !pinchStateRef.current) {
       setHoveredWordId(null);
     }
   }, []);
@@ -1004,6 +1177,8 @@ function CanvasWordMap({
     mapCameraRef.current = resetCamera;
     setMapCamera(resetCamera);
     setHoveredWordId(null);
+    activePointersRef.current.clear();
+    pinchStateRef.current = null;
   }, [selectedViewLabel]);
 
   useEffect(() => {
@@ -1798,6 +1973,10 @@ function ResetProgressDialog({
 }
 
 function App() {
+  useLayoutEffect(() => {
+    document.documentElement.classList.remove('app-loading');
+  }, []);
+
   const [selectedView, setSelectedView] = useState<HskView>(getInitialSelectedView);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterMode>('all');
@@ -1835,6 +2014,8 @@ function App() {
     startPanY: 0,
     didMove: false,
   });
+  const activePointersRef = useRef(new Map<number, MapPointerPosition>());
+  const pinchStateRef = useRef<MapPinchState | null>(null);
   const { progress, setWordStatus, clearWordStatus, resetProgress } = useProgress();
   const {
     isPlaying: isAudioPlaying,
@@ -2191,8 +2372,50 @@ function App() {
     event.preventDefault();
   }, []);
 
+  const startPinchGesture = useCallback((viewport: HTMLElement) => {
+    const pointerPair = getPointerPair(activePointersRef.current);
+    if (!pointerPair) {
+      return false;
+    }
+
+    const [firstPointer, secondPointer] = pointerPair;
+    const center = getViewportCenter(viewport, firstPointer, secondPointer);
+    const startDistance = getPointerDistance(firstPointer, secondPointer);
+    if (startDistance <= 0) {
+      return false;
+    }
+
+    pinchStateRef.current = {
+      centerX: center.x,
+      centerY: center.y,
+      startDistance,
+      startPanX: mapCameraRef.current.panX,
+      startPanY: mapCameraRef.current.panY,
+      startScale: mapCameraRef.current.scale,
+    };
+    dragStateRef.current = {
+      ...dragStateRef.current,
+      active: false,
+      captured: false,
+      didMove: false,
+    };
+    didDragRef.current = true;
+    viewport.classList.add('is-panning');
+    return true;
+  }, []);
+
   const handleMapPointerDown = useCallback((event: React.PointerEvent<HTMLElement>) => {
-    if (event.button !== 0) {
+    if (event.button !== 0 || isIgnoredMapPanTarget(event.target)) {
+      return;
+    }
+
+    activePointersRef.current.set(event.pointerId, {
+      clientX: event.clientX,
+      clientY: event.clientY,
+    });
+
+    if (activePointersRef.current.size >= 2 && startPinchGesture(event.currentTarget)) {
+      event.preventDefault();
       return;
     }
 
@@ -2206,9 +2429,46 @@ function App() {
       startPanY: mapCameraRef.current.panY,
       didMove: false,
     };
-  }, []);
+  }, [startPinchGesture]);
 
   const handleMapPointerMove = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    if (activePointersRef.current.has(event.pointerId)) {
+      activePointersRef.current.set(event.pointerId, {
+        clientX: event.clientX,
+        clientY: event.clientY,
+      });
+    }
+
+    if (activePointersRef.current.size >= 2) {
+      const pointerPair = getPointerPair(activePointersRef.current);
+      if (!pointerPair) {
+        return;
+      }
+
+      if (!pinchStateRef.current && !startPinchGesture(event.currentTarget)) {
+        return;
+      }
+
+      const pinch = pinchStateRef.current;
+      if (!pinch) {
+        return;
+      }
+
+      const [firstPointer, secondPointer] = pointerPair;
+      const currentCenter = getViewportCenter(event.currentTarget, firstPointer, secondPointer);
+      event.preventDefault();
+      didDragRef.current = true;
+      commitMapCamera(
+        getPinchAdjustedCamera({
+          currentCenterX: currentCenter.x,
+          currentCenterY: currentCenter.y,
+          currentDistance: getPointerDistance(firstPointer, secondPointer),
+          pinch,
+        }),
+      );
+      return;
+    }
+
     const dragState = dragStateRef.current;
     if (!dragState.active || dragState.pointerId !== event.pointerId) {
       return;
@@ -2239,9 +2499,32 @@ function App() {
       dragState.startPanX = nextCamera.panX;
       dragState.startPanY = nextCamera.panY;
     }
-  }, [commitMapCamera]);
+  }, [commitMapCamera, startPinchGesture]);
 
   const handleMapPointerEnd = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    const wasPinching = Boolean(pinchStateRef.current);
+    activePointersRef.current.delete(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    if (wasPinching) {
+      if (activePointersRef.current.size < 2) {
+        pinchStateRef.current = null;
+        dragStateRef.current = {
+          ...dragStateRef.current,
+          active: false,
+          captured: false,
+          didMove: false,
+        };
+        event.currentTarget.classList.remove('is-panning');
+        window.setTimeout(() => {
+          didDragRef.current = false;
+        }, 0);
+      }
+      return;
+    }
+
     const dragState = dragStateRef.current;
     if (!dragState.active || dragState.pointerId !== event.pointerId) {
       return;
@@ -2249,9 +2532,6 @@ function App() {
 
     dragStateRef.current = { ...dragState, active: false };
     event.currentTarget.classList.remove('is-panning');
-    if (dragState.captured && event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
 
     if (dragState.didMove) {
       window.setTimeout(() => {
@@ -2314,11 +2594,26 @@ function App() {
     };
     mapCameraRef.current = resetCamera;
     setMapCamera(resetCamera);
+    activePointersRef.current.clear();
+    pinchStateRef.current = null;
   }, [selectedView]);
 
   useEffect(() => {
     commitMapCamera(mapCameraRef.current);
   }, [commitMapCamera, levelGridRows, visibleCount]);
+
+  const handleToolbarPointerDownCapture = useCallback((event: React.PointerEvent<HTMLElement>) => {
+    event.stopPropagation();
+    activePointersRef.current.clear();
+    pinchStateRef.current = null;
+    dragStateRef.current = {
+      ...dragStateRef.current,
+      active: false,
+      captured: false,
+      didMove: false,
+    };
+    didDragRef.current = false;
+  }, []);
 
   return (
     <main className="app-shell" lang={ui.htmlLang} dir={ui.direction}>
@@ -2347,7 +2642,12 @@ function App() {
         </div>
       </header>
 
-      <section className="toolbar" aria-label={ui.mapControls}>
+      <section
+        className="toolbar"
+        aria-label={ui.mapControls}
+        data-map-pan-ignore="true"
+        onPointerDownCapture={handleToolbarPointerDownCapture}
+      >
         <div className="level-tabs" role="group" aria-label={ui.hskLevel}>
           {viewOptions.map((view) => (
             <a

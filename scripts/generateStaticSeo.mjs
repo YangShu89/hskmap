@@ -102,6 +102,37 @@ function renderHead({
   title,
 }) {
   const ogLocale = locale.htmlLang.replace('-', '_');
+  const appBootStyles = includeApp
+    ? `    <style>
+      html.app-loading #root {
+        opacity: 0;
+      }
+
+      html.app-loading body::before {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        color: #475569;
+        background: #fff8ed;
+        font: 800 0.95rem Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        content: "Loading HSKMAP...";
+      }
+    </style>
+    <noscript>
+      <style>
+        html.app-loading #root {
+          opacity: 1;
+        }
+
+        html.app-loading body::before {
+          display: none;
+        }
+      </style>
+    </noscript>`
+    : '';
+
   return `    <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${escapeHtml(title)}</title>
@@ -127,6 +158,7 @@ ${alternates
     <meta name="twitter:title" content="${escapeHtml(title)}" />
     <meta name="twitter:description" content="${escapeHtml(description)}" />
     <script type="application/ld+json">${escapeScriptJson(jsonLd)}</script>
+${appBootStyles}
 ${headScript}
     ${includeApp ? assets.app : assets.css}`;
 }
@@ -145,7 +177,7 @@ function renderDocument({
   title,
 }) {
   return `<!doctype html>
-<html lang="${escapeHtml(locale.htmlLang)}" dir="${escapeHtml(locale.direction)}">
+<html lang="${escapeHtml(locale.htmlLang)}" dir="${escapeHtml(locale.direction)}"${includeApp ? ' class="app-loading"' : ''}>
   <head>
 ${renderHead({
   assets,
