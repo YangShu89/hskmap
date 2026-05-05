@@ -16,6 +16,11 @@ import {
 import { useMandarinSpeech } from './hooks/useMandarinSpeech';
 import { useProgress } from './hooks/useProgress';
 import {
+  captureAnalyticsEvent,
+  captureAnalyticsPageView,
+  type AnalyticsProperties,
+} from './analytics';
+import {
   SEO_LOCALES,
   getAppRouteFromPath,
   getLocalizedSeoGuide,
@@ -575,6 +580,32 @@ function getModalHanziCharacterCount(hanzi: string) {
 
 function getWordAudioSrc(word: HskWord) {
   return word.level && word.level <= 6 ? `/audio/words/${word.id}.mp3` : undefined;
+}
+
+function getAnalyticsView(view: HskView) {
+  return view === 'all' ? 'all' : `hsk-${view}`;
+}
+
+function getRouteAnalyticsProperties(language: TranslationLanguage, view: HskView): AnalyticsProperties {
+  return {
+    hsk_view: getAnalyticsView(view),
+    language,
+  };
+}
+
+function getWordAnalyticsProperties(
+  word: HskWord,
+  language: TranslationLanguage,
+  view: HskView,
+): AnalyticsProperties {
+  return {
+    ...getRouteAnalyticsProperties(language, view),
+    cluster: word.cluster,
+    has_audio: Boolean(getWordAudioSrc(word)),
+    has_example_sentence: Boolean(word.exampleSentence),
+    word_id: word.id,
+    word_level: word.level ?? null,
+  };
 }
 
 function getWritableCharacters(hanzi: string) {
@@ -1465,7 +1496,21 @@ function CanvasWordMap({
   );
 }
 
-function HanziWriterCard({ hanzi, ui }: { hanzi: string; ui: UiCopy }) {
+function HanziWriterCard({
+  hanzi,
+  ui,
+  onWritingPracticeComplete,
+  onWritingPracticeHint,
+  onWritingPracticeStart,
+  onWritingReplay,
+}: {
+  hanzi: string;
+  ui: UiCopy;
+  onWritingPracticeComplete?: () => void;
+  onWritingPracticeHint?: () => void;
+  onWritingPracticeStart?: () => void;
+  onWritingReplay?: () => void;
+}) {
   const characters = useMemo(() => getWritableCharacters(hanzi), [hanzi]);
   const targetRefs = useRef<Array<HTMLDivElement | null>>([]);
   const writerRefs = useRef<Array<HanziWriter | null>>([]);
@@ -1628,6 +1673,8 @@ function HanziWriterCard({ hanzi, ui }: { hanzi: string; ui: UiCopy }) {
           advancePracticeTimerRef.current = window.setTimeout(() => {
             setPracticeIndex((current) => Math.min(current + 1, characters.length - 1));
           }, 850);
+        } else {
+          onWritingPracticeComplete?.();
         }
       },
     });
@@ -1638,7 +1685,15 @@ function HanziWriterCard({ hanzi, ui }: { hanzi: string; ui: UiCopy }) {
       target.replaceChildren();
       practiceWriterRef.current = null;
     };
-  }, [activePracticeCharacter, characters.length, mode, practiceIndex, practiceResetKey, ui]);
+  }, [
+    activePracticeCharacter,
+    characters.length,
+    mode,
+    onWritingPracticeComplete,
+    practiceIndex,
+    practiceResetKey,
+    ui,
+  ]);
 
   const handleModeChange = useCallback(
     (nextMode: WritingMode) => {
@@ -1648,9 +1703,10 @@ function HanziWriterCard({ hanzi, ui }: { hanzi: string; ui: UiCopy }) {
         setPracticeIndex(0);
         setPracticeResetKey((key) => key + 1);
         setCompletedCharacters(characters.map(() => false));
+        onWritingPracticeStart?.();
       }
     },
-    [characters],
+    [characters, onWritingPracticeStart],
   );
 
   const handlePracticeReset = useCallback(() => {
@@ -1661,8 +1717,9 @@ function HanziWriterCard({ hanzi, ui }: { hanzi: string; ui: UiCopy }) {
 
   const handlePracticeHint = useCallback(() => {
     const strokeIndex = Math.max(practiceState.currentStroke - 1, 0);
+    onWritingPracticeHint?.();
     void practiceWriterRef.current?.highlightStroke(strokeIndex);
-  }, [practiceState.currentStroke]);
+  }, [onWritingPracticeHint, practiceState.currentStroke]);
 
   if (!characters.length) {
     return null;
@@ -1690,7 +1747,14 @@ function HanziWriterCard({ hanzi, ui }: { hanzi: string; ui: UiCopy }) {
             </button>
           </div>
           {mode === 'watch' ? (
-            <button className="writing-replay" type="button" onClick={() => void animateCharacters()}>
+            <button
+              className="writing-replay"
+              type="button"
+              onClick={() => {
+                onWritingReplay?.();
+                void animateCharacters();
+              }}
+            >
               {ui.writing.replay}
             </button>
           ) : (
@@ -1799,9 +1863,15 @@ function DetailModal({
   speechMessage,
   speechSupported,
   onClose,
+  onFlashcardReveal,
+  onSentenceExpanded,
   onSpeak,
   onSetStatus,
   onClearStatus,
+  onWritingPracticeComplete,
+  onWritingPracticeHint,
+  onWritingPracticeStart,
+  onWritingReplay,
 }: {
   word: HskWord;
   wordMeaning: string;
@@ -1815,9 +1885,15 @@ function DetailModal({
   speechMessage: string | null;
   speechSupported: boolean;
   onClose: () => void;
+  onFlashcardReveal: (word: HskWord) => void;
+  onSentenceExpanded: (word: HskWord) => void;
   onSpeak: (word: HskWord) => void;
   onSetStatus: (wordId: string, status: WordStatus) => void;
   onClearStatus: (wordId: string) => void;
+  onWritingPracticeComplete: (word: HskWord) => void;
+  onWritingPracticeHint: (word: HskWord) => void;
+  onWritingPracticeStart: (word: HskWord) => void;
+  onWritingReplay: (word: HskWord) => void;
 }) {
   const [isAnswerVisible, setIsAnswerVisible] = useState(false);
   const [isSentenceExpanded, setIsSentenceExpanded] = useState(false);
@@ -1891,13 +1967,30 @@ function DetailModal({
     onSetStatus(word.id, 'know');
     onClose();
   };
+  const handleFlashcardToggle = useCallback(() => {
+    setIsAnswerVisible((visible) => {
+      const nextVisible = !visible;
+      if (nextVisible) {
+        onFlashcardReveal(word);
+      }
+
+      return nextVisible;
+    });
+  }, [onFlashcardReveal, word]);
   const toggleSentenceDetail = useCallback(() => {
     if (isRecallContentLocked) {
       return;
     }
 
-    setIsSentenceExpanded((expanded) => !expanded);
-  }, [isRecallContentLocked]);
+    setIsSentenceExpanded((expanded) => {
+      const nextExpanded = !expanded;
+      if (nextExpanded) {
+        onSentenceExpanded(word);
+      }
+
+      return nextExpanded;
+    });
+  }, [isRecallContentLocked, onSentenceExpanded, word]);
   const handleSentenceCardKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
       if (event.key !== 'Enter' && event.key !== ' ') {
@@ -1936,7 +2029,7 @@ function DetailModal({
               aria-controls="word-detail-answer"
               aria-expanded={isAnswerVisible}
               className={flashcardClassName}
-              onClick={() => setIsAnswerVisible((visible) => !visible)}
+              onClick={handleFlashcardToggle}
               style={flashcardStyle}
               type="button"
             >
@@ -1984,7 +2077,14 @@ function DetailModal({
 
           {hasWritingAnimation ? (
             <div className={isRecallContentLocked ? 'recall-locked-content is-locked' : 'recall-locked-content'}>
-              <HanziWriterCard hanzi={word.hanzi} ui={ui} />
+              <HanziWriterCard
+                hanzi={word.hanzi}
+                ui={ui}
+                onWritingPracticeComplete={() => onWritingPracticeComplete(word)}
+                onWritingPracticeHint={() => onWritingPracticeHint(word)}
+                onWritingPracticeStart={() => onWritingPracticeStart(word)}
+                onWritingReplay={() => onWritingReplay(word)}
+              />
               {isRecallContentLocked ? (
                 <div className="recall-lock-overlay" aria-hidden="true">
                   {ui.unlockWriting}
@@ -2177,6 +2277,8 @@ function App() {
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const posterViewportRef = useRef<HTMLDivElement | null>(null);
   const posterBoardRef = useRef<HTMLDivElement | null>(null);
+  const lastTrackedPageRef = useRef('');
+  const searchTrackingTimerRef = useRef(0);
   const mapCameraRef = useRef<MapCamera>({
     panX: 0,
     panY: 0,
@@ -2207,6 +2309,20 @@ function App() {
   } = useMandarinSpeech(ui.speech);
   const hoverWarmupEnabled = useDesktopHoverWarmupEnabled();
   const navigateToRoute = useCallback((nextLanguage: TranslationLanguage, nextView: HskView) => {
+    if (nextLanguage !== language) {
+      captureAnalyticsEvent('language_changed', {
+        ...getRouteAnalyticsProperties(nextLanguage, nextView),
+        previous_language: language,
+      });
+    }
+
+    if (nextView !== selectedView) {
+      captureAnalyticsEvent('level_opened', {
+        ...getRouteAnalyticsProperties(nextLanguage, nextView),
+        previous_hsk_view: getAnalyticsView(selectedView),
+      });
+    }
+
     setLanguage(nextLanguage);
     setSelectedView(nextView);
     setSelectedWord(null);
@@ -2219,7 +2335,7 @@ function App() {
     if (window.location.pathname !== nextPath) {
       window.history.pushState({ hskmap: true }, '', nextPath);
     }
-  }, []);
+  }, [language, selectedView]);
   const levelsToLoad = useMemo<readonly HskLevel[]>(
     () => (selectedView === 'all' ? HSK_LEVELS : [selectedView]),
     [selectedView],
@@ -2324,6 +2440,20 @@ function App() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const pageKey = `${window.location.pathname}${window.location.search}`;
+    if (lastTrackedPageRef.current === pageKey) {
+      return;
+    }
+
+    lastTrackedPageRef.current = pageKey;
+    captureAnalyticsPageView(getRouteAnalyticsProperties(language, selectedView));
+  }, [language, selectedView]);
 
   useEffect(() => {
     if (language === 'en' || !translationLevelsToLoad.length) {
@@ -2456,6 +2586,24 @@ function App() {
   const levelGridRows = selectedView === 6 ? 30 : selectedView === 5 ? 24 : 6;
   const shouldUseCanvasMap = selectedView === 5 || selectedView === 6;
 
+  useEffect(() => {
+    window.clearTimeout(searchTrackingTimerRef.current);
+    const normalizedSearchLength = search.trim().length;
+    if (normalizedSearchLength === 0) {
+      return;
+    }
+
+    searchTrackingTimerRef.current = window.setTimeout(() => {
+      captureAnalyticsEvent('search_used', {
+        ...getRouteAnalyticsProperties(language, selectedView),
+        result_count: visibleCount,
+        search_length: normalizedSearchLength,
+      });
+    }, 700);
+
+    return () => window.clearTimeout(searchTrackingTimerRef.current);
+  }, [language, search, selectedView, visibleCount]);
+
   const constrainMapCamera = useCallback((camera: MapCamera) => {
     const viewport = posterViewportRef.current;
     const board = posterBoardRef.current;
@@ -2490,22 +2638,57 @@ function App() {
     [constrainMapCamera],
   );
 
+  const handleFilterChange = useCallback(
+    (nextFilter: FilterMode) => {
+      setFilter(nextFilter);
+      captureAnalyticsEvent('filter_changed', {
+        ...getRouteAnalyticsProperties(language, selectedView),
+        filter: nextFilter,
+      });
+    },
+    [language, selectedView],
+  );
+
+  const handleFlashcardPromptModeChange = useCallback(
+    (nextMode: FlashcardPromptMode) => {
+      setFlashcardPromptMode(nextMode);
+      captureAnalyticsEvent('flashcard_prompt_mode_changed', {
+        ...getRouteAnalyticsProperties(language, selectedView),
+        prompt_mode: nextMode,
+      });
+    },
+    [language, selectedView],
+  );
+
   const handleSetStatus = useCallback(
     (wordId: string, status: WordStatus) => {
       setWordStatus(wordId, status);
+      const word = words.find((item) => item.id === wordId);
+      captureAnalyticsEvent('word_status_set', {
+        ...(word
+          ? getWordAnalyticsProperties(word, language, selectedView)
+          : { ...getRouteAnalyticsProperties(language, selectedView), word_id: wordId }),
+        status,
+      });
       setPulsingWordId(wordId);
       window.setTimeout(() => setPulsingWordId(null), 520);
     },
-    [setWordStatus],
+    [language, selectedView, setWordStatus, words],
   );
 
   const handleClearStatus = useCallback(
     (wordId: string) => {
       clearWordStatus(wordId);
+      const word = words.find((item) => item.id === wordId);
+      captureAnalyticsEvent('word_status_cleared', {
+        ...(word
+          ? getWordAnalyticsProperties(word, language, selectedView)
+          : { ...getRouteAnalyticsProperties(language, selectedView), word_id: wordId }),
+      });
       setPulsingWordId(wordId);
       window.setTimeout(() => setPulsingWordId(null), 520);
     },
-    [clearWordStatus],
+    [clearWordStatus, language, selectedView, words],
   );
 
   const handleReset = useCallback(() => {
@@ -2518,14 +2701,21 @@ function App() {
 
   const handleConfirmReset = useCallback(() => {
     resetProgress(words.map((word) => word.id));
+    captureAnalyticsEvent('progress_reset', {
+      ...getRouteAnalyticsProperties(language, selectedView),
+      known_count: stats.known,
+      learning_count: stats.learning,
+      word_count: words.length,
+    });
     setIsResetDialogOpen(false);
-  }, [resetProgress, words]);
+  }, [language, resetProgress, selectedView, stats.known, stats.learning, words]);
 
   const handleSpeak = useCallback(
     (word: HskWord) => {
+      captureAnalyticsEvent('audio_played', getWordAnalyticsProperties(word, language, selectedView));
       speakMandarin(word.hanzi, getWordAudioSrc(word));
     },
-    [speakMandarin],
+    [language, selectedView, speakMandarin],
   );
 
   const handleFocusIntentWord = useCallback(
@@ -2570,9 +2760,52 @@ function App() {
 
   const handleSelectWord = useCallback(
     (word: HskWord) => {
+      captureAnalyticsEvent('word_opened', getWordAnalyticsProperties(word, language, selectedView));
       setSelectedWord(word);
     },
-    [],
+    [language, selectedView],
+  );
+
+  const handleFlashcardReveal = useCallback(
+    (word: HskWord) => {
+      captureAnalyticsEvent('flashcard_revealed', getWordAnalyticsProperties(word, language, selectedView));
+    },
+    [language, selectedView],
+  );
+
+  const handleSentenceExpanded = useCallback(
+    (word: HskWord) => {
+      captureAnalyticsEvent('sentence_expanded', getWordAnalyticsProperties(word, language, selectedView));
+    },
+    [language, selectedView],
+  );
+
+  const handleWritingPracticeStart = useCallback(
+    (word: HskWord) => {
+      captureAnalyticsEvent('writing_practice_started', getWordAnalyticsProperties(word, language, selectedView));
+    },
+    [language, selectedView],
+  );
+
+  const handleWritingPracticeComplete = useCallback(
+    (word: HskWord) => {
+      captureAnalyticsEvent('writing_practice_completed', getWordAnalyticsProperties(word, language, selectedView));
+    },
+    [language, selectedView],
+  );
+
+  const handleWritingPracticeHint = useCallback(
+    (word: HskWord) => {
+      captureAnalyticsEvent('writing_practice_hint_used', getWordAnalyticsProperties(word, language, selectedView));
+    },
+    [language, selectedView],
+  );
+
+  const handleWritingReplay = useCallback(
+    (word: HskWord) => {
+      captureAnalyticsEvent('writing_replay_clicked', getWordAnalyticsProperties(word, language, selectedView));
+    },
+    [language, selectedView],
   );
 
   const handleMapWheel = useCallback(
@@ -2943,7 +3176,7 @@ function App() {
                 className={filter === item.id ? 'active' : ''}
                 key={item.id}
                 type="button"
-                onClick={() => setFilter(item.id)}
+                onClick={() => handleFilterChange(item.id)}
               >
                 {ui.filters[item.id]}
               </button>
@@ -2956,7 +3189,7 @@ function App() {
                 className={flashcardPromptMode === mode.id ? 'active' : ''}
                 key={mode.id}
                 type="button"
-                onClick={() => setFlashcardPromptMode(mode.id)}
+                onClick={() => handleFlashcardPromptModeChange(mode.id)}
               >
                 {ui.promptModes[mode.id]}
               </button>
@@ -3211,8 +3444,14 @@ function App() {
         <DetailModal
           onClearStatus={handleClearStatus}
           onClose={() => setSelectedWord(null)}
+          onFlashcardReveal={handleFlashcardReveal}
+          onSentenceExpanded={handleSentenceExpanded}
           onSetStatus={handleSetStatus}
           onSpeak={handleSpeak}
+          onWritingPracticeComplete={handleWritingPracticeComplete}
+          onWritingPracticeHint={handleWritingPracticeHint}
+          onWritingPracticeStart={handleWritingPracticeStart}
+          onWritingReplay={handleWritingReplay}
           promptMode={flashcardPromptMode}
           isAudioButtonActive={selectedWordAudioFeedback?.isActive ?? false}
           isAudioLoading={selectedWordAudioFeedback?.loadState === 'loading'}
