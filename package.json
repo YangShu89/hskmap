@@ -17,7 +17,8 @@
     "audio:hsk6": "node scripts/generateHskAudio.mjs --levels=6 --kind=words",
     "hsk3:extract": "node scripts/extractHsk3VocabularyFromPdf.mjs",
     "hsk3:import": "node scripts/importHsk3Vocabulary.mjs",
-    "hsk3:validate": "node scripts/importHsk3Vocabulary.mjs --validate"
+    "hsk3:validate": "node scripts/importHsk3Vocabulary.mjs --validate",
+    "hsk3:analyze-reuse": "node scripts/analyzeHsk3Reuse.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^6.0.1",

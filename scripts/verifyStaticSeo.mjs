@@ -17,6 +17,7 @@ const locales = [
   ['id', 'id'],
   ['ar', 'ar'],
 ];
+const indexedHsk6Slugs = new Set(['en', 'ru', 'es', 'fr', 'de', 'pt-br', 'ko', 'ja', 'vi', 'id', 'ar']);
 
 function assert(condition, message) {
   if (!condition) {
@@ -67,17 +68,33 @@ async function main() {
       }
 
       if (level === 6 && slug !== 'en') {
-        assert(
-          levelHtml.includes('<meta name="robots" content="noindex,follow" />'),
-          `/${slug}/hsk-6/: expected noindex until translations exist`,
-        );
+        if (indexedHsk6Slugs.has(slug)) {
+          assert(
+            levelHtml.includes('<meta name="robots" content="index,follow" />'),
+            `/${slug}/hsk-6/: expected translated HSK 6 locale to be indexable`,
+          );
+        } else {
+          assert(
+            levelHtml.includes('<meta name="robots" content="noindex,follow" />'),
+            `/${slug}/hsk-6/: expected noindex until translations exist`,
+          );
+        }
       }
     }
   }
 
   const sitemap = await fs.readFile(path.join(distDir, 'sitemap.xml'), 'utf8');
   assert(sitemap.includes('https://hskmap.com/en/hsk-6/'), 'sitemap: missing English HSK 6');
-  assert(!sitemap.includes('https://hskmap.com/es/hsk-6/'), 'sitemap: non-English HSK 6 should be excluded');
+  assert(sitemap.includes('https://hskmap.com/ru/hsk-6/'), 'sitemap: missing Russian HSK 6');
+  assert(sitemap.includes('https://hskmap.com/es/hsk-6/'), 'sitemap: missing Spanish HSK 6');
+  assert(sitemap.includes('https://hskmap.com/fr/hsk-6/'), 'sitemap: missing French HSK 6');
+  assert(sitemap.includes('https://hskmap.com/de/hsk-6/'), 'sitemap: missing German HSK 6');
+  assert(sitemap.includes('https://hskmap.com/pt-br/hsk-6/'), 'sitemap: missing Brazilian Portuguese HSK 6');
+  assert(sitemap.includes('https://hskmap.com/ko/hsk-6/'), 'sitemap: missing Korean HSK 6');
+  assert(sitemap.includes('https://hskmap.com/ja/hsk-6/'), 'sitemap: missing Japanese HSK 6');
+  assert(sitemap.includes('https://hskmap.com/vi/hsk-6/'), 'sitemap: missing Vietnamese HSK 6');
+  assert(sitemap.includes('https://hskmap.com/id/hsk-6/'), 'sitemap: missing Indonesian HSK 6');
+  assert(sitemap.includes('https://hskmap.com/ar/hsk-6/'), 'sitemap: missing Arabic HSK 6');
 
   console.log('Static SEO verification passed.');
 }

@@ -301,6 +301,58 @@ const TRANSLATION_LOADERS: Partial<Record<HskLevel, Partial<Record<LocalizedLang
       'HSK5_VI_SENTENCE_MEANINGS',
     ),
   },
+  6: {
+    ar: bundle(
+      () => import('./hsk6ArabicTranslations'),
+      'HSK6_AR_WORD_MEANINGS',
+      'HSK6_AR_SENTENCE_MEANINGS',
+    ),
+    de: bundle(
+      () => import('./hsk6GermanTranslations'),
+      'HSK6_DE_WORD_MEANINGS',
+      'HSK6_DE_SENTENCE_MEANINGS',
+    ),
+    es: bundle(
+      () => import('./hsk6SpanishTranslations'),
+      'HSK6_ES_WORD_MEANINGS',
+      'HSK6_ES_SENTENCE_MEANINGS',
+    ),
+    fr: bundle(
+      () => import('./hsk6FrenchTranslations'),
+      'HSK6_FR_WORD_MEANINGS',
+      'HSK6_FR_SENTENCE_MEANINGS',
+    ),
+    ja: bundle(
+      () => import('./hsk6JapaneseTranslations'),
+      'HSK6_JA_WORD_MEANINGS',
+      'HSK6_JA_SENTENCE_MEANINGS',
+    ),
+    ko: bundle(
+      () => import('./hsk6KoreanTranslations'),
+      'HSK6_KO_WORD_MEANINGS',
+      'HSK6_KO_SENTENCE_MEANINGS',
+    ),
+    'pt-BR': bundle(
+      () => import('./hsk6PortugueseTranslations'),
+      'HSK6_PT_BR_WORD_MEANINGS',
+      'HSK6_PT_BR_SENTENCE_MEANINGS',
+    ),
+    ru: bundle(
+      () => import('./hsk6RussianTranslations'),
+      'HSK6_RU_WORD_MEANINGS',
+      'HSK6_RU_SENTENCE_MEANINGS',
+    ),
+    vi: bundle(
+      () => import('./hsk6VietnameseTranslations'),
+      'HSK6_VI_WORD_MEANINGS',
+      'HSK6_VI_SENTENCE_MEANINGS',
+    ),
+    id: bundle(
+      () => import('./hsk6IndonesianTranslations'),
+      'HSK6_ID_WORD_MEANINGS',
+      'HSK6_ID_SENTENCE_MEANINGS',
+    ),
+  },
 };
 
 const translationCache = new Map<string, Promise<LocalizedMeaningMap>>();
