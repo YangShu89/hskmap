@@ -92,6 +92,14 @@ interface PracticeFeedback {
   totalStrokes: number;
 }
 
+type NavigatorWithConnection = Navigator & {
+  connection?: {
+    addEventListener?: (type: 'change', listener: () => void) => void;
+    removeEventListener?: (type: 'change', listener: () => void) => void;
+    saveData?: boolean;
+  };
+};
+
 const DEFAULT_ZOOM = 1;
 const MIN_ZOOM = 0.04;
 const MAX_ZOOM = 36;
@@ -103,6 +111,8 @@ const TILE_BOARD_PADDING_RATIO = 0.324;
 const MIN_VISIBLE_MAP_EDGE = 96;
 const HSK4_WORD_MAP_SPLIT_INDEX = 300;
 const CANVAS_OVERSCAN_TILES = 2;
+const HOVER_WARMUP_DWELL_MS = 120;
+const HOVER_WARMUP_MEDIA_QUERY = '(hover: hover) and (pointer: fine)';
 const ALL_WORD_COUNT = HSK_LEVELS.reduce(
   (count, level) => count + HSK_LEVEL_WORD_COUNTS[level],
   0,
@@ -158,6 +168,119 @@ const FLASHCARD_PROMPT_MODE_STORAGE_KEY = 'hsk-flashcard-prompt-mode';
 const LANGUAGE_STORAGE_KEY = 'hsk-translation-language';
 const LANGUAGE_OPTIONS = SEO_LOCALES;
 const WRITING_PRACTICE_LEVELS = new Set<HskLevel>([1, 2, 3, 4, 5, 6]);
+
+function isDesktopHoverWarmupEnabled() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  if ((navigator as NavigatorWithConnection).connection?.saveData === true) {
+    return false;
+  }
+
+  return window.matchMedia(HOVER_WARMUP_MEDIA_QUERY).matches;
+}
+
+function useDesktopHoverWarmupEnabled() {
+  const [isEnabled, setIsEnabled] = useState(isDesktopHoverWarmupEnabled);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia(HOVER_WARMUP_MEDIA_QUERY);
+    const legacyMediaQuery = mediaQuery as MediaQueryList & {
+      addListener?: (listener: (event: MediaQueryListEvent) => void) => void;
+      removeListener?: (listener: (event: MediaQueryListEvent) => void) => void;
+    };
+    const connection = (navigator as NavigatorWithConnection).connection;
+    const sync = () => setIsEnabled(isDesktopHoverWarmupEnabled());
+
+    sync();
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', sync);
+    } else {
+      legacyMediaQuery.addListener?.(sync);
+    }
+    connection?.addEventListener?.('change', sync);
+
+    return () => {
+      if (typeof mediaQuery.removeEventListener === 'function') {
+        mediaQuery.removeEventListener('change', sync);
+      } else {
+        legacyMediaQuery.removeListener?.(sync);
+      }
+      connection?.removeEventListener?.('change', sync);
+    };
+  }, []);
+
+  return isEnabled;
+}
+
+function useWordHoverWarmup({
+  enabled,
+  onWarmup,
+}: {
+  enabled: boolean;
+  onWarmup: (word: HskWord) => void;
+}) {
+  const timerRef = useRef<number | null>(null);
+  const pendingWordIdRef = useRef<string | null>(null);
+
+  const cancel = useCallback((wordOrId?: HskWord | string | null) => {
+    const targetWordId = typeof wordOrId === 'string' ? wordOrId : wordOrId?.id ?? null;
+    if (targetWordId && pendingWordIdRef.current !== targetWordId) {
+      return;
+    }
+
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+
+    pendingWordIdRef.current = null;
+  }, []);
+
+  const schedule = useCallback(
+    (word: HskWord) => {
+      if (!enabled || typeof window === 'undefined') {
+        return;
+      }
+
+      if (pendingWordIdRef.current === word.id) {
+        return;
+      }
+
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+      }
+
+      pendingWordIdRef.current = word.id;
+      timerRef.current = window.setTimeout(() => {
+        timerRef.current = null;
+        pendingWordIdRef.current = null;
+        onWarmup(word);
+      }, HOVER_WARMUP_DWELL_MS);
+    },
+    [enabled, onWarmup],
+  );
+
+  useEffect(() => {
+    if (!enabled) {
+      cancel();
+    }
+  }, [cancel, enabled]);
+
+  useEffect(
+    () => () => {
+      cancel();
+    },
+    [cancel],
+  );
+
+  return { cancel, schedule };
+}
 
 function normalize(value: string) {
   return value
@@ -675,6 +798,10 @@ function TileButton({
   meaning,
   status,
   isPulsing,
+  onFocusIntent,
+  onHoverEnd,
+  onHoverStart,
+  onPointerIntent,
   onSelect,
   className: extraClassName,
   style,
@@ -683,6 +810,10 @@ function TileButton({
   meaning: string;
   status?: WordStatus;
   isPulsing: boolean;
+  onFocusIntent: (word: HskWord) => void;
+  onHoverEnd: (word: HskWord) => void;
+  onHoverStart: (word: HskWord) => void;
+  onPointerIntent: (word: HskWord) => void;
   onSelect: (word: HskWord) => void;
   className?: string;
   style?: React.CSSProperties;
@@ -706,6 +837,11 @@ function TileButton({
       className={className}
       draggable={false}
       type="button"
+      onBlur={() => onHoverEnd(word)}
+      onFocus={() => onFocusIntent(word)}
+      onMouseEnter={() => onHoverStart(word)}
+      onMouseLeave={() => onHoverEnd(word)}
+      onPointerDown={() => onPointerIntent(word)}
       onClick={() => onSelect(word)}
       aria-label={`${word.hanzi}, ${word.pinyin}, ${meaning}`}
       style={tileStyle}
@@ -803,6 +939,7 @@ function drawWordMapCanvas({
 }
 
 interface CanvasWordMapProps {
+  hoverWarmupEnabled: boolean;
   words: HskWord[];
   wordGroups: VisibleWordGroup[];
   progress: ProgressMap;
@@ -812,10 +949,14 @@ interface CanvasWordMapProps {
   language: TranslationLanguage;
   localizedMeanings: LoadedLocalizedMeanings;
   ui: UiCopy;
+  onFocusIntentWord: (word: HskWord) => void;
+  onHoverWarmupWord: (word: HskWord) => void;
+  onPointerIntentWord: (word: HskWord) => void;
   onSelectWord: (word: HskWord) => void;
 }
 
 function CanvasWordMap({
+  hoverWarmupEnabled,
   words,
   wordGroups,
   progress,
@@ -825,6 +966,9 @@ function CanvasWordMap({
   language,
   localizedMeanings,
   ui,
+  onFocusIntentWord,
+  onHoverWarmupWord,
+  onPointerIntentWord,
   onSelectWord,
 }: CanvasWordMapProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -857,6 +1001,11 @@ function CanvasWordMap({
   const [pulseProgress, setPulseProgress] = useState<number | null>(null);
   const [viewportSize, setViewportSize] = useState<MapViewportSize>({ width: 0, height: 0 });
   const layout = useMemo(() => getWordMapLayout(wordGroups, levelGridRows), [levelGridRows, wordGroups]);
+  const wordsById = useMemo(() => new Map(words.map((word) => [word.id, word])), [words]);
+  const { cancel: cancelHoverWarmup, schedule: scheduleHoverWarmup } = useWordHoverWarmup({
+    enabled: hoverWarmupEnabled,
+    onWarmup: onHoverWarmupWord,
+  });
 
   const constrainMapCamera = useCallback(
     (camera: MapCamera) => {
@@ -984,6 +1133,11 @@ function CanvasWordMap({
       return;
     }
 
+    const intentWord = getWordFromPointer(event);
+    if (intentWord) {
+      onPointerIntentWord(intentWord);
+    }
+
     activePointersRef.current.set(event.pointerId, {
       clientX: event.clientX,
       clientY: event.clientY,
@@ -1005,7 +1159,7 @@ function CanvasWordMap({
       startPanY: mapCameraRef.current.panY,
       didMove: false,
     };
-  }, []);
+  }, [getWordFromPointer, onPointerIntentWord, startPinchGesture]);
 
   const handleMapPointerMove = useCallback(
     (event: React.PointerEvent<HTMLElement>) => {
@@ -1182,6 +1336,24 @@ function CanvasWordMap({
   }, [selectedViewLabel]);
 
   useEffect(() => {
+    if (!hoverWarmupEnabled || dragStateRef.current.active || pinchStateRef.current) {
+      cancelHoverWarmup();
+      return undefined;
+    }
+
+    const hoveredWord = hoveredWordId ? wordsById.get(hoveredWordId) ?? null : null;
+    if (!hoveredWord) {
+      cancelHoverWarmup();
+      return undefined;
+    }
+
+    scheduleHoverWarmup(hoveredWord);
+    return () => {
+      cancelHoverWarmup(hoveredWord.id);
+    };
+  }, [cancelHoverWarmup, hoverWarmupEnabled, hoveredWordId, scheduleHoverWarmup, wordsById]);
+
+  useEffect(() => {
     commitMapCamera(mapCameraRef.current);
   }, [commitMapCamera, viewportSize.height, viewportSize.width]);
 
@@ -1280,6 +1452,8 @@ function CanvasWordMap({
           <button
             key={word.id}
             type="button"
+            onFocus={() => onFocusIntentWord(word)}
+            onPointerDown={() => onPointerIntentWord(word)}
             onClick={() => onSelectWord(word)}
             aria-label={`${word.hanzi}, ${word.pinyin}, ${getWordMeaning(word, language, localizedMeanings)}`}
           >
@@ -1619,7 +1793,9 @@ function DetailModal({
   promptMode,
   ui,
   status,
-  isAudioPlaying,
+  isAudioButtonActive,
+  isAudioPending,
+  isAudioLoading,
   speechMessage,
   speechSupported,
   onClose,
@@ -1633,7 +1809,9 @@ function DetailModal({
   promptMode: FlashcardPromptMode;
   ui: UiCopy;
   status?: WordStatus;
-  isAudioPlaying: boolean;
+  isAudioButtonActive: boolean;
+  isAudioPending: boolean;
+  isAudioLoading: boolean;
   speechMessage: string | null;
   speechSupported: boolean;
   onClose: () => void;
@@ -1854,9 +2032,9 @@ function DetailModal({
         <div className="modal-footer">
           <div className="modal-actions">
             <button
-              aria-busy={isAudioPlaying}
-              className={isAudioPlaying ? 'audio-button is-playing' : 'audio-button'}
-              disabled={!speechSupported || isRecallContentLocked}
+              aria-busy={isAudioLoading || isAudioPending}
+              className={isAudioButtonActive ? 'audio-button is-playing' : 'audio-button'}
+              disabled={!speechSupported || isRecallContentLocked || isAudioPending}
               type="button"
               onClick={() => onSpeak(word)}
             >
@@ -2019,12 +2197,15 @@ function App() {
   const pinchStateRef = useRef<MapPinchState | null>(null);
   const { progress, setWordStatus, clearWordStatus, resetProgress } = useProgress();
   const {
-    isPlaying: isAudioPlaying,
+    getAudioFeedback,
     message: speechMessage,
     preload: preloadSpeechAudio,
+    prefetch: prefetchSpeechAudio,
     speak: speakMandarin,
     supported: speechSupported,
+    warmup: warmupSpeechAudio,
   } = useMandarinSpeech(ui.speech);
+  const hoverWarmupEnabled = useDesktopHoverWarmupEnabled();
   const navigateToRoute = useCallback((nextLanguage: TranslationLanguage, nextView: HskView) => {
     setLanguage(nextLanguage);
     setSelectedView(nextView);
@@ -2347,6 +2528,53 @@ function App() {
     [speakMandarin],
   );
 
+  const handleFocusIntentWord = useCallback(
+    (word: HskWord) => {
+      prefetchSpeechAudio(getWordAudioSrc(word), { intent: 'focus' });
+    },
+    [prefetchSpeechAudio],
+  );
+
+  const handlePointerIntentWord = useCallback(
+    (word: HskWord) => {
+      prefetchSpeechAudio(getWordAudioSrc(word), { intent: 'pointerdown' });
+    },
+    [prefetchSpeechAudio],
+  );
+
+  const handleHoverWarmupWord = useCallback(
+    (word: HskWord) => {
+      warmupSpeechAudio(getWordAudioSrc(word), { intent: 'hover' });
+    },
+    [warmupSpeechAudio],
+  );
+
+  const { cancel: cancelHoverWarmup, schedule: scheduleHoverWarmup } = useWordHoverWarmup({
+    enabled: hoverWarmupEnabled,
+    onWarmup: handleHoverWarmupWord,
+  });
+
+  const handleHoverWarmupStart = useCallback(
+    (word: HskWord) => {
+      scheduleHoverWarmup(word);
+    },
+    [scheduleHoverWarmup],
+  );
+
+  const handleHoverWarmupEnd = useCallback(
+    (word: HskWord) => {
+      cancelHoverWarmup(word);
+    },
+    [cancelHoverWarmup],
+  );
+
+  const handleSelectWord = useCallback(
+    (word: HskWord) => {
+      setSelectedWord(word);
+    },
+    [],
+  );
+
   const handleMapWheel = useCallback(
     (event: React.WheelEvent<HTMLElement>) => {
       event.preventDefault();
@@ -2567,7 +2795,9 @@ function App() {
   }, [progress, selectedWord, words]);
 
   useEffect(() => {
-    preloadSpeechAudio(selectedWord ? getWordAudioSrc(selectedWord) : undefined);
+    preloadSpeechAudio(selectedWord ? getWordAudioSrc(selectedWord) : undefined, {
+      reason: 'modal',
+    });
   }, [preloadSpeechAudio, selectedWord]);
 
   useEffect(() => {
@@ -2616,6 +2846,7 @@ function App() {
     };
     didDragRef.current = false;
   }, []);
+  const selectedWordAudioFeedback = selectedWord ? getAudioFeedback(getWordAudioSrc(selectedWord)) : null;
 
   return (
     <main className="app-shell" lang={ui.htmlLang} dir={ui.direction}>
@@ -2833,7 +3064,12 @@ function App() {
                         className={progress[word.id] ? `preview-word is-${progress[word.id]}` : 'preview-word'}
                         key={word.id}
                         type="button"
-                        onClick={() => setSelectedWord(word)}
+                        onBlur={() => handleHoverWarmupEnd(word)}
+                        onFocus={() => handleFocusIntentWord(word)}
+                        onMouseEnter={() => handleHoverWarmupStart(word)}
+                        onMouseLeave={() => handleHoverWarmupEnd(word)}
+                        onPointerDown={() => handlePointerIntentWord(word)}
+                        onClick={() => handleSelectWord(word)}
                       >
                         {getTileLabel(word.hanzi)}
                       </button>
@@ -2855,10 +3091,14 @@ function App() {
         <section className="map-shell" aria-label={ui.wordMap(selectedViewMeta.label)}>
           {shouldUseCanvasMap && hasVisibleWords ? (
             <CanvasWordMap
+              hoverWarmupEnabled={hoverWarmupEnabled}
               language={language}
               localizedMeanings={localizedMeanings}
               levelGridRows={levelGridRows}
-              onSelectWord={setSelectedWord}
+              onFocusIntentWord={handleFocusIntentWord}
+              onHoverWarmupWord={handleHoverWarmupWord}
+              onPointerIntentWord={handlePointerIntentWord}
+              onSelectWord={handleSelectWord}
               progress={progress}
               pulsingWordId={pulsingWordId}
               selectedViewLabel={selectedViewMeta.label}
@@ -2917,7 +3157,11 @@ function App() {
                             isPulsing={pulsingWordId === word.id}
                             key={word.id}
                             meaning={getWordMeaning(word, language, localizedMeanings)}
-                            onSelect={setSelectedWord}
+                            onFocusIntent={handleFocusIntentWord}
+                            onHoverEnd={handleHoverWarmupEnd}
+                            onHoverStart={handleHoverWarmupStart}
+                            onPointerIntent={handlePointerIntentWord}
+                            onSelect={handleSelectWord}
                             status={progress[word.id]}
                             word={word}
                           />
@@ -2970,7 +3214,9 @@ function App() {
           onSetStatus={handleSetStatus}
           onSpeak={handleSpeak}
           promptMode={flashcardPromptMode}
-          isAudioPlaying={isAudioPlaying}
+          isAudioButtonActive={selectedWordAudioFeedback?.isActive ?? false}
+          isAudioLoading={selectedWordAudioFeedback?.loadState === 'loading'}
+          isAudioPending={selectedWordAudioFeedback?.isPending ?? false}
           sentenceMeaning={getSentenceMeaning(selectedWord, language, localizedMeanings)}
           speechMessage={speechMessage}
           speechSupported={speechSupported}
