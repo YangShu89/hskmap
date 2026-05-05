@@ -7,7 +7,11 @@ export type ClusterId =
   | 'daily'
   | 'descriptors';
 
-export type HskLevel = 1 | 2 | 3 | 4 | 5 | 6;
+export type ClassicHskLevel = 1 | 2 | 3 | 4 | 5 | 6;
+export type HskLevel = ClassicHskLevel;
+export type HskStandard = 'classic' | 'hsk3';
+export type Hsk3Level = 1 | 2 | 3 | 4 | 5 | 6 | '7-9';
+export type Hsk3Stage = 'elementary' | 'intermediate' | 'advanced';
 
 export type WordStatus = 'learning' | 'know';
 
@@ -36,3 +40,13 @@ export interface ClusterMeta {
 }
 
 export type ProgressMap = Record<string, WordStatus>;
+
+export interface Hsk3OfficialVocabularyEntry {
+  sequence: number;
+  level: Hsk3Level;
+  levelLabel: string;
+  additionalLevels: Hsk3Level[];
+  hanzi: string;
+  pinyin: string;
+  partOfSpeech: string;
+}

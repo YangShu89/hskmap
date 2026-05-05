@@ -1,0 +1,65 @@
+{
+  "standard": "HSK 3.0",
+  "publisher": "Chinese Testing International (CTI)",
+  "canonicalSource": {
+    "title": "Syllabus for the Chinese Proficiency Test",
+    "url": "https://hsk.cn-bj.ufileos.com/3.0/%E6%96%B0%E7%89%88HSK%E8%80%83%E8%AF%95%E5%A4%A7%E7%BA%B21219.pdf",
+    "released": "2025-11",
+    "implemented": "2026-07"
+  },
+  "referencePages": {
+    "vocabularyStart": 76,
+    "levelStarts": {
+      "1": 77,
+      "2": 84,
+      "3": 89,
+      "4": 102,
+      "5": 127,
+      "6": 167,
+      "7-9": 212
+    }
+  },
+  "supportingSources": {
+    "overviewUrl": "https://www.chinesetest.cn/HSK",
+    "syllabusPortalUrl": "https://www.chinesetest.cn/syllabus",
+    "pilotNoticeUrl": "https://www.chinesetest.cn/notice",
+    "pilotNoticeObservedOn": "2026-05-05"
+  },
+  "bands": {
+    "1": {
+      "stage": "elementary",
+      "addedCount": 300,
+      "cumulativeTotal": 300
+    },
+    "2": {
+      "stage": "elementary",
+      "addedCount": 200,
+      "cumulativeTotal": 500
+    },
+    "3": {
+      "stage": "elementary",
+      "addedCount": 500,
+      "cumulativeTotal": 1000
+    },
+    "4": {
+      "stage": "intermediate",
+      "addedCount": 1000,
+      "cumulativeTotal": 2000
+    },
+    "5": {
+      "stage": "intermediate",
+      "addedCount": 1600,
+      "cumulativeTotal": 3600
+    },
+    "6": {
+      "stage": "intermediate",
+      "addedCount": 1800,
+      "cumulativeTotal": 5400
+    },
+    "7-9": {
+      "stage": "advanced",
+      "addedCount": 5600,
+      "cumulativeTotal": 11000
+    }
+  }
+}
