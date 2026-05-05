@@ -50,3 +50,24 @@ export interface Hsk3OfficialVocabularyEntry {
   pinyin: string;
   partOfSpeech: string;
 }
+
+export type Hsk3SenseMarker = `${number}`;
+
+export interface Hsk3NormalizedHanziFields {
+  rawHanzi: string;
+  displayHanzi: string;
+  senseMarker: Hsk3SenseMarker | null;
+  hasSenseMarker: boolean;
+}
+
+export type Hsk3NormalizedEntry<TEntry extends { hanzi: string }> = TEntry & Hsk3NormalizedHanziFields;
+
+export type Hsk3NormalizedOfficialVocabularyEntry =
+  Hsk3NormalizedEntry<Hsk3OfficialVocabularyEntry>;
+
+export interface Hsk3OfficialVocabularyPayload<TEntry = Hsk3OfficialVocabularyEntry> {
+  status: 'not_imported' | 'imported';
+  generatedAt: string | null;
+  inputFile: string | null;
+  entries: TEntry[];
+}

@@ -6,6 +6,11 @@ import {
   HSK_LEVELS,
 } from './data/hskMetadata';
 import { loadHskLevels } from './data/hskLoaders';
+import type { Hsk3Level1EnglishPayload } from './data/hsk3/level1English';
+import type {
+  Hsk3Level1ClassicReuseEntry,
+  Hsk3Level1ClassicReusePayload,
+} from './data/hsk3/level1Reuse';
 import {
   getAvailableLocalizedLevels,
   loadLocalizedMeanings,
@@ -28,12 +33,23 @@ import {
   getLocaleByLanguage,
   type HskView,
 } from './seo';
-import type { HskLevel, HskWord, ProgressMap, WordStatus } from './types';
+import type {
+  ClassicHskLevel,
+  ClusterId,
+  ExampleSentence,
+  Hsk3Level,
+  Hsk3NormalizedOfficialVocabularyEntry,
+  HskLevel,
+  HskWord,
+  ProgressMap,
+  WordStatus,
+} from './types';
 import { getUiCopy, type UiCopy } from './uiCopy';
 
 type FilterMode = 'all' | 'learning' | 'know' | 'unmarked';
 type FlashcardPromptMode = 'chinese' | 'translation';
 type WritingMode = 'watch' | 'practice';
+type Hsk3PreviewView = 'all' | Hsk3Level;
 
 interface MapCamera {
   panX: number;
@@ -88,6 +104,51 @@ interface MapPinchState {
   startScale: number;
 }
 
+interface Hsk3PreviewLevelOption {
+  id: Hsk3Level;
+  label: string;
+  description: string;
+}
+
+interface Hsk3PreviewData {
+  entries: Hsk3NormalizedOfficialVocabularyEntry[];
+  hasImported: boolean;
+  level1English: Hsk3Level1EnglishPayload | null;
+  implemented: string;
+  level1Reuse: Hsk3Level1ClassicReusePayload | null;
+  levelOptions: Hsk3PreviewLevelOption[];
+  senseMarkerCount: number;
+  sourceUrl: string;
+  totalCount: number;
+}
+
+type Hsk3PreviewMeaningSource = Hsk3Level1EnglishPayload['entries'][number]['meaningSource'] | 'pending';
+
+interface Hsk3PreviewWord extends HskWord {
+  officialSequence: number;
+  previewLevel: Hsk3Level;
+  rawHanzi: string;
+  levelLabel: string;
+  partOfSpeech: string;
+  meaningSource: Hsk3PreviewMeaningSource;
+  classicSourceLevel: ClassicHskLevel | null;
+  sentenceSourceLevel: ClassicHskLevel | null;
+}
+
+interface Hsk3PreviewLevelOverview {
+  id: Hsk3Level;
+  label: string;
+  description: string;
+  total: number;
+  visibleCount: number;
+  englishReadyCount: number;
+  sentenceReadyCount: number;
+  pendingEnglishCount: number;
+  accent: string;
+  textColor: string;
+  visibleWords: Hsk3PreviewWord[];
+}
+
 interface PracticeFeedback {
   completedStrokes: number;
   currentStroke: number;
@@ -122,6 +183,11 @@ const ALL_WORD_COUNT = HSK_LEVELS.reduce(
   (count, level) => count + HSK_LEVEL_WORD_COUNTS[level],
   0,
 );
+const HSK3_INTERNAL_PREVIEW_PATH = '/internal/hsk3';
+const HSK3_PREVIEW_MAX_ROWS = 300;
+const HSK3_PREVIEW_UI = getUiCopy('en');
+const EMPTY_LOCALIZED_MEANINGS: LoadedLocalizedMeanings = {};
+const HSK3_PREVIEW_PROGRESS: ProgressMap = {};
 const TILE_COLORS = {
   default: {
     fill: '#f7b718',
@@ -159,6 +225,25 @@ const LEVEL_TEXT_COLORS: Record<HskLevel, string> = {
   5: '#eff6ff',
   6: '#fff1f2',
 };
+const HSK3_LEVEL_ACCENTS: Record<Hsk3Level, string> = {
+  1: '#f7b718',
+  2: '#0f8fa5',
+  3: '#f05a35',
+  4: '#7c3aed',
+  5: '#2563eb',
+  6: '#db2777',
+  '7-9': '#0f172a',
+};
+const HSK3_LEVEL_TEXT_COLORS: Record<Hsk3Level, string> = {
+  1: '#3b3208',
+  2: '#ecfeff',
+  3: '#fff7ed',
+  4: '#f5f3ff',
+  5: '#eff6ff',
+  6: '#fff1f2',
+  '7-9': '#f8fafc',
+};
+const HSK3_CANVAS_LEVELS = new Set<Hsk3Level>([1, 2, 3, 4, 5, 6, '7-9']);
 const FILTERS: { id: FilterMode }[] = [
   { id: 'all' },
   { id: 'learning' },
@@ -296,6 +381,50 @@ function normalize(value: string) {
     .replace(/v/g, 'u:');
 }
 
+function isInternalHsk3PreviewPath(pathname: string) {
+  return pathname === HSK3_INTERNAL_PREVIEW_PATH || pathname === `${HSK3_INTERNAL_PREVIEW_PATH}/`;
+}
+
+function setRobotsMetaContent(content: string | null) {
+  if (typeof document === 'undefined') {
+    return () => {};
+  }
+
+  let robotsMeta = document.querySelector('meta[name="robots"]');
+  const createdMeta = !robotsMeta;
+  const previousContent = robotsMeta?.getAttribute('content') ?? null;
+
+  if (!robotsMeta) {
+    robotsMeta = document.createElement('meta');
+    robotsMeta.setAttribute('name', 'robots');
+    document.head.appendChild(robotsMeta);
+  }
+
+  if (content) {
+    robotsMeta.setAttribute('content', content);
+  } else {
+    robotsMeta.removeAttribute('content');
+  }
+
+  return () => {
+    if (!robotsMeta) {
+      return;
+    }
+
+    if (previousContent) {
+      robotsMeta.setAttribute('content', previousContent);
+      return;
+    }
+
+    if (createdMeta) {
+      robotsMeta.remove();
+      return;
+    }
+
+    robotsMeta.removeAttribute('content');
+  };
+}
+
 function getInitialAppRoute() {
   if (typeof window === 'undefined') {
     return getAppRouteFromPath('/');
@@ -326,6 +455,14 @@ function getInitialTranslationLanguage(): TranslationLanguage {
 
 function shouldHandleRouteClick(event: React.MouseEvent<HTMLElement>) {
   return !(event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey);
+}
+
+function getInitialIsInternalHsk3Preview() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  return isInternalHsk3PreviewPath(window.location.pathname);
 }
 
 function isIgnoredMapPanTarget(target: EventTarget | null) {
@@ -2175,6 +2312,232 @@ function DetailModal({
   );
 }
 
+function getHsk3PreviewLevelLabel(word: Hsk3PreviewWord) {
+  return word.previewLevel === '7-9'
+    ? 'HSK 3.0 7-9'
+    : `HSK 3.0 ${word.levelLabel}`;
+}
+
+function Hsk3PreviewDetailModal({
+  word,
+  onClose,
+}: {
+  word: Hsk3PreviewWord;
+  onClose: () => void;
+}) {
+  const [isAnswerVisible, setIsAnswerVisible] = useState(false);
+  const [isSentenceExpanded, setIsSentenceExpanded] = useState(false);
+  const modalScrollRef = useRef<HTMLDivElement | null>(null);
+  const sentenceCardRef = useRef<HTMLDivElement | null>(null);
+  const hanziCharacterCount = getModalHanziCharacterCount(word.hanzi);
+  const flashcardStyle = {
+    '--modal-hanzi-count': hanziCharacterCount,
+  } as React.CSSProperties;
+  const flashcardClassName = [
+    'flashcard-card',
+    isAnswerVisible ? 'is-revealed' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const hasWritingAnimation =
+    typeof word.level === 'number' && WRITING_PRACTICE_LEVELS.has(word.level);
+  const sourceLabel =
+    word.meaningSource === 'classic_reuse' && word.classicSourceLevel
+      ? `Reused from ${formatClassicHskLevel(word.classicSourceLevel)}`
+      : word.meaningSource === 'authored'
+        ? 'Authored for HSK 3.0'
+        : 'English pending';
+  const sourceTone =
+    word.meaningSource === 'classic_reuse'
+      ? 'internal-preview-chip is-positive'
+      : word.meaningSource === 'authored'
+        ? 'internal-preview-chip is-neutral'
+        : 'internal-preview-chip is-warning';
+
+  useEffect(() => {
+    setIsAnswerVisible(false);
+    setIsSentenceExpanded(false);
+  }, [word.id]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!isSentenceExpanded) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      const scrollContainer = modalScrollRef.current;
+      const sentenceCard = sentenceCardRef.current;
+
+      if (!scrollContainer || !sentenceCard) {
+        return;
+      }
+
+      const scrollContainerRect = scrollContainer.getBoundingClientRect();
+      const sentenceCardRect = sentenceCard.getBoundingClientRect();
+      const scrollDistance = sentenceCardRect.bottom - scrollContainerRect.bottom + 24;
+
+      if (scrollDistance > 0) {
+        scrollContainer.scrollBy({
+          top: scrollDistance,
+          behavior: 'smooth',
+        });
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [isSentenceExpanded]);
+
+  const toggleSentenceDetail = useCallback(() => {
+    setIsSentenceExpanded((expanded) => !expanded);
+  }, []);
+  const handleSentenceCardKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== 'Enter' && event.key !== ' ') {
+        return;
+      }
+
+      event.preventDefault();
+      toggleSentenceDetail();
+    },
+    [toggleSentenceDetail],
+  );
+
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose} role="presentation">
+      <section
+        aria-labelledby="hsk3-preview-detail-title"
+        aria-modal="true"
+        className="word-modal"
+        onMouseDown={(event) => event.stopPropagation()}
+        onWheel={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <div className="modal-topbar">
+          <button className="modal-close" type="button" onClick={onClose} aria-label="Close details">
+            <span className="modal-close-mark" aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="modal-scroll" ref={modalScrollRef}>
+          <h2 className="sr-only" id="hsk3-preview-detail-title">
+            {word.hanzi}
+          </h2>
+
+          <div className="flashcard-stage">
+            <button
+              aria-controls={`hsk3-preview-answer-${word.id}`}
+              aria-expanded={isAnswerVisible}
+              className={flashcardClassName}
+              onClick={() => setIsAnswerVisible((visible) => !visible)}
+              style={flashcardStyle}
+              type="button"
+            >
+              <span className="flashcard-face flashcard-front" aria-hidden={isAnswerVisible}>
+                <span className="modal-kicker">{getHsk3PreviewLevelLabel(word)}</span>
+                <span className="modal-hanzi">{word.hanzi}</span>
+                <span className="flashcard-cue">Reveal answer</span>
+              </span>
+              <span className="flashcard-face flashcard-back" aria-hidden={!isAnswerVisible}>
+                <span className="modal-kicker">{getHsk3PreviewLevelLabel(word)}</span>
+                <span className="modal-meaning" dir="auto">{word.meaning}</span>
+                <span className="modal-pinyin">{word.pinyin}</span>
+                <span className="flashcard-cue">Hide answer</span>
+              </span>
+            </button>
+          </div>
+
+          <div className={isAnswerVisible ? 'modal-answer is-visible' : 'modal-answer'} id={`hsk3-preview-answer-${word.id}`}>
+            <div className="hsk3-preview-modal-meta">
+              <span className={sourceTone}>{sourceLabel}</span>
+              <span className="internal-preview-chip is-neutral">Sequence #{word.officialSequence.toLocaleString('en')}</span>
+              <span className="internal-preview-chip is-neutral">POS: {word.partOfSpeech || 'Not tagged'}</span>
+              {word.classicSourceLevel ? (
+                <span className="internal-preview-chip is-neutral">
+                  Classic source: {formatClassicHskLevel(word.classicSourceLevel)}
+                </span>
+              ) : null}
+              {word.rawHanzi !== word.hanzi ? (
+                <span className="internal-preview-sense-badge">Raw form: {word.rawHanzi}</span>
+              ) : null}
+            </div>
+          </div>
+
+          {hasWritingAnimation ? <HanziWriterCard hanzi={word.hanzi} ui={HSK3_PREVIEW_UI} /> : null}
+
+          {word.exampleSentence ? (
+            <div
+              aria-controls={`hsk3-preview-sentence-${word.id}`}
+              aria-expanded={isSentenceExpanded}
+              className="sentence-card"
+              onClick={toggleSentenceDetail}
+              onKeyDown={handleSentenceCardKeyDown}
+              ref={sentenceCardRef}
+              role="button"
+              tabIndex={0}
+            >
+              <div className="sentence-card-header">
+                <p className="sentence-kicker">Sentence candidate</p>
+                <span className="sentence-toggle" aria-hidden="true">
+                  {isSentenceExpanded ? 'Hide pinyin' : 'Show pinyin'}
+                </span>
+              </div>
+              <p className="sentence-hanzi">{word.exampleSentence.hanzi}</p>
+              {isSentenceExpanded ? (
+                <div className="sentence-detail" id={`hsk3-preview-sentence-${word.id}`}>
+                  <p className="sentence-pinyin">{word.exampleSentence.pinyin}</p>
+                  <p className="sentence-meaning" dir="auto">{word.exampleSentence.meaning}</p>
+                  <p className="hsk3-preview-modal-sentence-note">
+                    {word.sentenceSourceLevel
+                      ? `${getSentenceReuseLabel(word.exampleSentence, {
+                          classicId: '',
+                          classicLevel: word.sentenceSourceLevel,
+                          hanzi: word.hanzi,
+                          pinyin: word.pinyin,
+                          meaning: word.meaning,
+                          cluster: word.cluster,
+                          exampleSentence: word.exampleSentence,
+                          audio: null,
+                        })} from ${formatClassicHskLevel(word.sentenceSourceLevel)}`
+                      : 'Reusable classic sentence candidate'}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="sentence-card is-disabled hsk3-preview-modal-empty-sentence">
+              <div className="sentence-card-header">
+                <p className="sentence-kicker">Sentence work</p>
+              </div>
+              <p className="sentence-hanzi">No sentence candidate yet.</p>
+              <p className="sentence-meaning">
+                {word.previewLevel === 1
+                  ? 'This Level 1 word still needs a new HSK 3.0 sentence.'
+                  : 'Sentence authoring has not started for this band yet.'}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="modal-footer hsk3-preview-modal-footer">
+          <span className={sourceTone}>{sourceLabel}</span>
+          <span>Audio and progress tracking are disabled on this internal preview route.</span>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function ResetProgressDialog({
   label,
   learningCount,
@@ -2250,11 +2613,1191 @@ function ResetProgressDialog({
   );
 }
 
+function formatHsk3PreviewRate(value: number) {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function formatClassicHskLevel(level: ClassicHskLevel) {
+  return `HSK ${level}`;
+}
+
+function formatClassicLevelBreakdown(counts: Record<ClassicHskLevel, number>) {
+  return ([1, 2, 3, 4, 5, 6] as const)
+    .filter((level) => counts[level] > 0)
+    .map((level) => `${formatClassicHskLevel(level)}: ${counts[level].toLocaleString('en')}`)
+    .join(', ');
+}
+
+function getSentenceReuseLabel(
+  sentence: ExampleSentence | null,
+  candidate: Hsk3Level1ClassicReuseEntry['preferredCandidate'],
+) {
+  if (!candidate) {
+    return 'Needs new sentence';
+  }
+
+  if (!sentence) {
+    return 'No classic sentence';
+  }
+
+  return candidate.classicLevel === 1
+    ? 'Same-level candidate'
+    : `${formatClassicHskLevel(candidate.classicLevel)} candidate`;
+}
+
+function LegacyHsk3InternalPreview({
+  data,
+  error,
+  isLoading,
+  onSearchChange,
+  onViewChange,
+  search,
+  view,
+}: {
+  data: Hsk3PreviewData | null;
+  error: string | null;
+  isLoading: boolean;
+  onSearchChange: (value: string) => void;
+  onViewChange: (view: Hsk3PreviewView) => void;
+  search: string;
+  view: Hsk3PreviewView;
+}) {
+  const entries = data?.entries ?? [];
+  const level1EnglishEntries = data?.level1English?.entries ?? [];
+  const level1ReuseEntries = data?.level1Reuse?.entries ?? [];
+  const level1EnglishBySequence = useMemo(() => {
+    const englishMap = new Map<number, Hsk3Level1EnglishPayload['entries'][number]>();
+
+    for (const entry of level1EnglishEntries) {
+      englishMap.set(entry.sequence, entry);
+    }
+
+    return englishMap;
+  }, [level1EnglishEntries]);
+  const level1ReuseBySequence = useMemo(() => {
+    const reuseMap = new Map<number, Hsk3Level1ClassicReuseEntry>();
+
+    for (const entry of level1ReuseEntries) {
+      reuseMap.set(entry.official.sequence, entry);
+    }
+
+    return reuseMap;
+  }, [level1ReuseEntries]);
+  const filteredEntries = useMemo(() => {
+    if (!entries.length) {
+      return [];
+    }
+
+    const scopedEntries =
+      view === 'all' ? entries : entries.filter((entry) => entry.level === view);
+    const normalizedSearch = normalize(search.trim());
+
+    if (!normalizedSearch) {
+      return scopedEntries;
+    }
+
+    return scopedEntries.filter((entry) => {
+      const englishEntry =
+        entry.level === 1 ? level1EnglishBySequence.get(entry.sequence) ?? null : null;
+      const reuseEntry = entry.level === 1 ? level1ReuseBySequence.get(entry.sequence) ?? null : null;
+      const preferredCandidate = reuseEntry?.preferredCandidate ?? null;
+      const sentenceCandidate = preferredCandidate?.exampleSentence ?? null;
+      const searchable = [
+        String(entry.sequence),
+        String(entry.levelLabel),
+        entry.displayHanzi,
+        entry.rawHanzi,
+        entry.pinyin,
+        entry.partOfSpeech,
+        entry.senseMarker ?? '',
+        englishEntry?.meaning ?? preferredCandidate?.meaning ?? '',
+        englishEntry?.meaningSource ?? '',
+        preferredCandidate ? formatClassicHskLevel(preferredCandidate.classicLevel) : '',
+        sentenceCandidate?.hanzi ?? '',
+        sentenceCandidate?.meaning ?? '',
+      ].join(' ');
+
+      return normalize(searchable).includes(normalizedSearch);
+    });
+  }, [entries, level1EnglishBySequence, level1ReuseBySequence, search, view]);
+
+  const visibleEntries = filteredEntries.slice(0, HSK3_PREVIEW_MAX_ROWS);
+  const activeLevelOption = data?.levelOptions.find((option) => option.id === view) ?? null;
+  const isLevel1Scope = view === 1;
+  const level1EnglishSummary = data?.level1English?.summary ?? null;
+  const level1Summary = data?.level1Reuse?.summary ?? null;
+  const filteredSenseMarkerCount = filteredEntries.filter((entry) => entry.hasSenseMarker).length;
+  const classicReuseBreakdown = level1Summary
+    ? formatClassicLevelBreakdown(level1Summary.preferredCandidateCountByClassicLevel)
+    : '';
+
+  return (
+    <main className="internal-preview-shell">
+      <section className="internal-preview-hero">
+        <div>
+          <p className="eyebrow">Internal Preview</p>
+          <h1>HSK 3.0 private vocabulary preview</h1>
+          <p className="internal-preview-copy">
+            This route is intentionally hidden from the public UI. Open it directly at
+            {' '}
+            <code>{HSK3_INTERNAL_PREVIEW_PATH}</code>
+            {' '}
+            while sentence coverage and audio reuse are still in progress.
+          </p>
+          {data ? (
+            <p className="internal-preview-meta">
+              Official source imported:
+              {' '}
+              <strong>{data.totalCount.toLocaleString('en')}</strong>
+              {' '}
+              words.
+              {' '}
+              CTI implementation target:
+              {' '}
+              <strong>{data.implemented}</strong>.
+              {' '}
+              Normalized sense-marked entries:
+              {' '}
+              <strong>{data.senseMarkerCount.toLocaleString('en')}</strong>.
+            </p>
+          ) : null}
+        </div>
+
+        <div className="internal-preview-status">
+          <span>Route</span>
+          <strong>{HSK3_INTERNAL_PREVIEW_PATH}</strong>
+          {data ? (
+            <>
+              <span>Visible now</span>
+              <strong>{filteredEntries.length.toLocaleString('en')}</strong>
+            </>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="internal-preview-toolbar" aria-label="HSK 3.0 internal preview controls">
+        <div className="internal-preview-levels" role="group" aria-label="HSK 3.0 level">
+          <button
+            className={view === 'all' ? 'active' : ''}
+            type="button"
+            onClick={() => onViewChange('all')}
+          >
+            <span>All HSK 3.0</span>
+            <small>{data ? `${data.totalCount.toLocaleString('en')} total` : 'Loading'}</small>
+          </button>
+          {data?.levelOptions.map((option) => (
+            <button
+              className={view === option.id ? 'active' : ''}
+              key={option.id}
+              type="button"
+              onClick={() => onViewChange(option.id)}
+            >
+              <span>{option.label}</span>
+              <small>{option.description}</small>
+            </button>
+          ))}
+        </div>
+
+        <label className="internal-preview-search">
+          <span>Search</span>
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Sequence, hanzi, pinyin, or part of speech"
+          />
+        </label>
+      </section>
+
+      {error ? (
+        <section className="internal-preview-card" role="alert">
+          <h2>Could not load HSK 3.0 preview data.</h2>
+          <p>{error}</p>
+        </section>
+      ) : isLoading ? (
+        <section className="internal-preview-card" aria-busy="true">
+          <h2>Loading HSK 3.0 preview data...</h2>
+        </section>
+      ) : !data?.hasImported ? (
+        <section className="internal-preview-card" role="alert">
+          <h2>HSK 3.0 data has not been imported yet.</h2>
+          <p>Run the HSK 3.0 import pipeline before using this preview route.</p>
+        </section>
+      ) : (
+        <>
+          <section className="internal-preview-card">
+            <div className="internal-preview-summary">
+              <div>
+                <span>Scope</span>
+                <strong>{activeLevelOption?.label ?? 'All HSK 3.0'}</strong>
+              </div>
+              <div>
+                <span>Matches</span>
+                <strong>{filteredEntries.length.toLocaleString('en')}</strong>
+              </div>
+              <div>
+                <span>Rendered</span>
+                <strong>{visibleEntries.length.toLocaleString('en')}</strong>
+              </div>
+              <div>
+                <span>Sense-marked</span>
+                <strong>{filteredSenseMarkerCount.toLocaleString('en')}</strong>
+              </div>
+              <div>
+                <span>Source</span>
+                <a href={data.sourceUrl} rel="noreferrer" target="_blank">
+                  CTI syllabus PDF
+                </a>
+              </div>
+            </div>
+
+            {isLevel1Scope && level1Summary && level1EnglishSummary ? (
+              <>
+                <p className="internal-preview-note">
+                  Level 1 English meanings are now fully covered:
+                  {' '}
+                  <strong>
+                    {level1EnglishSummary.coveredEntryCount.toLocaleString('en')}
+                    {' / '}
+                    {level1EnglishSummary.totalEntryCount.toLocaleString('en')}
+                  </strong>
+                  {' '}({formatHsk3PreviewRate(level1EnglishSummary.coverageRate)}), with
+                  {' '}
+                  <strong>{level1EnglishSummary.reusedMeaningCount.toLocaleString('en')}</strong>
+                  {' '}
+                  reused meanings and
+                  {' '}
+                  <strong>{level1EnglishSummary.authoredMeaningCount.toLocaleString('en')}</strong>
+                  {' '}
+                  newly authored ones.
+                </p>
+                <p className="internal-preview-note">
+                  Preferred classic reuse sources:
+                  {' '}
+                  <strong>{classicReuseBreakdown || 'none yet'}</strong>.
+                  {' '}
+                  Sentence candidates currently cover
+                  {' '}
+                  <strong>
+                    {level1Summary.exampleSentenceCandidateEntryCount.toLocaleString('en')}
+                    {' / '}
+                    {level1Summary.officialEntryCount.toLocaleString('en')}
+                  </strong>
+                  {' '}
+                  while the remaining
+                  {' '}
+                  <strong>{level1Summary.unmatchedEntryCount.toLocaleString('en')}</strong>
+                  {' '}
+                  still need new sentence work.
+                </p>
+              </>
+            ) : filteredEntries.length > HSK3_PREVIEW_MAX_ROWS ? (
+              <p className="internal-preview-note">
+                Showing the first {HSK3_PREVIEW_MAX_ROWS.toLocaleString('en')} rows. Narrow the level
+                or search if you want a smaller slice.
+              </p>
+            ) : (
+              <p className="internal-preview-note">
+                This view shows normalized display words. Official raw forms like
+                {' '}
+                <code>本1</code>
+                {' '}
+                and
+                {' '}
+                <code>点1</code>
+                {' '}
+                stay preserved behind the scenes while the numeric sense marker is separated for display.
+              </p>
+            )}
+          </section>
+
+          {isLevel1Scope && level1Summary && level1EnglishSummary ? (
+            <section className="internal-preview-card">
+              <div className="internal-preview-summary internal-preview-summary--level1">
+                <div>
+                  <span>English Coverage</span>
+                  <strong>
+                    {level1EnglishSummary.coveredEntryCount.toLocaleString('en')}
+                    {' / '}
+                    {level1EnglishSummary.totalEntryCount.toLocaleString('en')}
+                  </strong>
+                  <small>{formatHsk3PreviewRate(level1EnglishSummary.coverageRate)}</small>
+                </div>
+                <div>
+                  <span>Reused Meanings</span>
+                  <strong>{level1EnglishSummary.reusedMeaningCount.toLocaleString('en')}</strong>
+                  <small>Matched from classic HSK</small>
+                </div>
+                <div>
+                  <span>Authored Meanings</span>
+                  <strong>{level1EnglishSummary.authoredMeaningCount.toLocaleString('en')}</strong>
+                  <small>New HSK 3.0 wording</small>
+                </div>
+                <div>
+                  <span>Sentence candidates</span>
+                  <strong>{level1Summary.exampleSentenceCandidateEntryCount.toLocaleString('en')}</strong>
+                  <small>{formatHsk3PreviewRate(level1Summary.exampleSentenceCandidateRate)}</small>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          <section className="internal-preview-card internal-preview-table-wrap">
+            <table className="internal-preview-table">
+              <thead>
+                <tr>
+                  <th scope="col">#</th>
+                  <th scope="col">Level</th>
+                  <th scope="col">Word</th>
+                  <th scope="col">Pinyin</th>
+                  <th scope="col">POS</th>
+                  {isLevel1Scope ? (
+                    <>
+                      <th scope="col">English Meaning</th>
+                      <th scope="col">Meaning Source</th>
+                      <th scope="col">Sentence Candidate</th>
+                      <th scope="col">Classic Source</th>
+                    </>
+                  ) : null}
+                </tr>
+              </thead>
+              <tbody>
+                {visibleEntries.map((entry) => {
+                  const englishEntry =
+                    entry.level === 1 ? level1EnglishBySequence.get(entry.sequence) ?? null : null;
+                  const reuseEntry =
+                    entry.level === 1 ? level1ReuseBySequence.get(entry.sequence) ?? null : null;
+                  const preferredCandidate = reuseEntry?.preferredCandidate ?? null;
+                  const sentenceCandidate = preferredCandidate?.exampleSentence ?? null;
+
+                  return (
+                    <tr key={entry.sequence}>
+                      <td>{entry.sequence}</td>
+                      <td>{entry.levelLabel}</td>
+                      <td className="internal-preview-word-cell">
+                        <span className="internal-preview-word">{entry.displayHanzi}</span>
+                        {entry.hasSenseMarker ? (
+                          <span className="internal-preview-sense-badge">
+                            Sense {entry.senseMarker}
+                          </span>
+                        ) : null}
+                        {entry.hasSenseMarker ? (
+                          <small className="internal-preview-word-meta">
+                            Raw official form:
+                            {' '}
+                            {entry.rawHanzi}
+                          </small>
+                        ) : null}
+                      </td>
+                      <td>{entry.pinyin}</td>
+                      <td>{entry.partOfSpeech || '-'}</td>
+                      {isLevel1Scope ? (
+                        <>
+                          <td>
+                            {englishEntry?.meaning ? (
+                              <div className="internal-preview-cell-stack">
+                                <strong>{englishEntry.meaning}</strong>
+                                {englishEntry.meaningSource === 'authored' ? (
+                                  <span className="internal-preview-hint">Authored for HSK 3.0 Level 1</span>
+                                ) : preferredCandidate ? (
+                                  <span className="internal-preview-hint">
+                                    Reused from {formatClassicHskLevel(preferredCandidate.classicLevel)}
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <span className="internal-preview-chip is-warning">Needs new English</span>
+                            )}
+                          </td>
+                          <td>
+                            {englishEntry?.meaningSource === 'classic_reuse' && preferredCandidate ? (
+                              <span className="internal-preview-chip is-positive">
+                                Reused from {formatClassicHskLevel(preferredCandidate.classicLevel)}
+                              </span>
+                            ) : englishEntry?.meaningSource === 'authored' ? (
+                              <span className="internal-preview-chip is-neutral">New HSK 3.0 meaning</span>
+                            ) : (
+                              <span className="internal-preview-chip is-warning">Missing</span>
+                            )}
+                          </td>
+                          <td>
+                            {sentenceCandidate ? (
+                              <div className="internal-preview-cell-stack">
+                                <strong>{sentenceCandidate.hanzi}</strong>
+                                <span>{sentenceCandidate.meaning}</span>
+                                <span className="internal-preview-hint">
+                                  {getSentenceReuseLabel(sentenceCandidate, preferredCandidate)}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="internal-preview-chip is-warning">
+                                {getSentenceReuseLabel(sentenceCandidate, preferredCandidate)}
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            {preferredCandidate ? (
+                              <div className="internal-preview-cell-stack">
+                                <strong>{formatClassicHskLevel(preferredCandidate.classicLevel)}</strong>
+                                <code>{preferredCandidate.classicId}</code>
+                                {reuseEntry && reuseEntry.candidates.length > 1 ? (
+                                  <span className="internal-preview-hint">
+                                    {reuseEntry.candidates.length - 1}
+                                    {' '}
+                                    alternate candidate
+                                    {reuseEntry.candidates.length === 2 ? '' : 's'}
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : englishEntry?.meaningSource === 'authored' ? (
+                              <span className="internal-preview-chip is-neutral">No classic meaning match</span>
+                            ) : (
+                              <span className="internal-preview-chip is-neutral">No classic match</span>
+                            )}
+                          </td>
+                        </>
+                      ) : null}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </section>
+        </>
+      )}
+    </main>
+  );
+}
+
+function getHsk3PreviewLevelRows(level: Hsk3Level) {
+  if (level === 6) {
+    return 30;
+  }
+
+  if (level === 5) {
+    return 24;
+  }
+
+  if (level === '7-9') {
+    return 34;
+  }
+
+  if (level === 4) {
+    return 16;
+  }
+
+  if (level === 3) {
+    return 10;
+  }
+
+  if (level === 2) {
+    return 8;
+  }
+
+  return 6;
+}
+
+function getHsk3PreviewVisibleWordGroups(level: Hsk3Level, visibleWords: Hsk3PreviewWord[]): VisibleWordGroup[] {
+  const splitIndex =
+    level === 3 && visibleWords.length > 240
+      ? Math.ceil(visibleWords.length / 2)
+      : level === 4 && visibleWords.length > HSK4_WORD_MAP_SPLIT_INDEX
+        ? HSK4_WORD_MAP_SPLIT_INDEX
+        : 0;
+
+  if (splitIndex <= 0 || splitIndex >= visibleWords.length) {
+    return [{ startIndex: 0, words: visibleWords }];
+  }
+
+  return [
+    { startIndex: 0, words: visibleWords.slice(0, splitIndex) },
+    { startIndex: splitIndex, words: visibleWords.slice(splitIndex) },
+  ];
+}
+
+function inferHsk3PreviewCluster(
+  partOfSpeech: string,
+  meaning: string | null,
+  fallback: ClusterId | null,
+): ClusterId {
+  if (fallback) {
+    return fallback;
+  }
+
+  const normalizedPartOfSpeech = partOfSpeech.normalize('NFC');
+  const normalizedMeaning = meaning?.toLowerCase() ?? '';
+
+  if (
+    normalizedPartOfSpeech.includes('代') ||
+    /\b(parent|dad|father|mom|mother|boyfriend|girlfriend|student|teacher|doctor|classmate|friend|person|people|child|children|he|she|they|we|you|i)\b/.test(normalizedMeaning)
+  ) {
+    return 'people';
+  }
+
+  if (
+    normalizedPartOfSpeech.includes('数') ||
+    /\b(day|week|month|year|morning|afternoon|evening|late|early|time|today|tomorrow|yesterday|sunday)\b/.test(normalizedMeaning)
+  ) {
+    return 'time';
+  }
+
+  if (
+    /\b(where|here|there|school|store|shop|restaurant|hospital|classroom|country|china|home|outside|inside|university|middle school|primary school)\b/.test(
+      normalizedMeaning,
+    )
+  ) {
+    return 'places';
+  }
+
+  if (normalizedPartOfSpeech.includes('动')) {
+    return 'verbs';
+  }
+
+  if (
+    normalizedPartOfSpeech.includes('助') ||
+    normalizedPartOfSpeech.includes('介') ||
+    normalizedPartOfSpeech.includes('连') ||
+    normalizedPartOfSpeech.includes('叹') ||
+    /\b(what|which|where|who|how|why|hello|don['’]t|not|okay|some|a little|plural suffix)\b/.test(
+      normalizedMeaning,
+    )
+  ) {
+    return 'questions';
+  }
+
+  if (
+    normalizedPartOfSpeech.includes('形') ||
+    normalizedPartOfSpeech.includes('副') ||
+    /\b(good|bad|beautiful|interesting|pleasant|late|early|little|somewhat|a bit)\b/.test(
+      normalizedMeaning,
+    )
+  ) {
+    return 'descriptors';
+  }
+
+  return 'daily';
+}
+
+function Hsk3InternalPreview({
+  data,
+  error,
+  isLoading,
+  onSearchChange,
+  onViewChange,
+  search,
+  view,
+}: {
+  data: Hsk3PreviewData | null;
+  error: string | null;
+  isLoading: boolean;
+  onSearchChange: (value: string) => void;
+  onViewChange: (view: Hsk3PreviewView) => void;
+  search: string;
+  view: Hsk3PreviewView;
+}) {
+  const [selectedWord, setSelectedWord] = useState<Hsk3PreviewWord | null>(null);
+  const detailRef = useRef<HTMLElement | null>(null);
+  const entries = data?.entries ?? [];
+  const level1EnglishEntries = data?.level1English?.entries ?? [];
+  const level1ReuseEntries = data?.level1Reuse?.entries ?? [];
+  const level1EnglishBySequence = useMemo(() => {
+    const englishMap = new Map<number, Hsk3Level1EnglishPayload['entries'][number]>();
+
+    for (const entry of level1EnglishEntries) {
+      englishMap.set(entry.sequence, entry);
+    }
+
+    return englishMap;
+  }, [level1EnglishEntries]);
+  const level1ReuseBySequence = useMemo(() => {
+    const reuseMap = new Map<number, Hsk3Level1ClassicReuseEntry>();
+
+    for (const entry of level1ReuseEntries) {
+      reuseMap.set(entry.official.sequence, entry);
+    }
+
+    return reuseMap;
+  }, [level1ReuseEntries]);
+  const previewWords = useMemo(() => {
+    if (!entries.length) {
+      return [];
+    }
+
+    return entries.map((entry) => {
+      const englishEntry =
+        entry.level === 1 ? level1EnglishBySequence.get(entry.sequence) ?? null : null;
+      const reuseEntry = entry.level === 1 ? level1ReuseBySequence.get(entry.sequence) ?? null : null;
+      const preferredCandidate =
+        englishEntry?.preferredReuseCandidate ?? reuseEntry?.preferredCandidate ?? null;
+      const meaning = englishEntry?.meaning ?? preferredCandidate?.meaning ?? 'English meaning pending';
+
+      return {
+        id: `hsk3-${String(entry.level).replace('-', '')}-${entry.sequence}`,
+        level: typeof entry.level === 'number' ? entry.level : undefined,
+        hanzi: entry.displayHanzi,
+        pinyin: entry.pinyin,
+        meaning,
+        cluster: inferHsk3PreviewCluster(
+          entry.partOfSpeech,
+          englishEntry?.meaning ?? preferredCandidate?.meaning ?? null,
+          preferredCandidate?.cluster ?? null,
+        ),
+        exampleSentence: preferredCandidate?.exampleSentence ?? undefined,
+        officialSequence: entry.sequence,
+        previewLevel: entry.level,
+        rawHanzi: entry.rawHanzi,
+        levelLabel: entry.levelLabel,
+        partOfSpeech: entry.partOfSpeech,
+        meaningSource: englishEntry?.meaningSource ?? 'pending',
+        classicSourceLevel: preferredCandidate?.classicLevel ?? null,
+        sentenceSourceLevel: preferredCandidate?.exampleSentence ? preferredCandidate.classicLevel : null,
+      } satisfies Hsk3PreviewWord;
+    });
+  }, [entries, level1EnglishBySequence, level1ReuseBySequence]);
+  const previewWordsByLevel = useMemo(() => {
+    const wordsByLevel = new Map<Hsk3Level, Hsk3PreviewWord[]>();
+
+    for (const option of data?.levelOptions ?? []) {
+      wordsByLevel.set(option.id, []);
+    }
+
+    for (const word of previewWords) {
+      const existing = wordsByLevel.get(word.previewLevel) ?? [];
+      existing.push(word);
+      wordsByLevel.set(word.previewLevel, existing);
+    }
+
+    return wordsByLevel;
+  }, [data?.levelOptions, previewWords]);
+  const filteredWords = useMemo(() => {
+    if (!previewWords.length) {
+      return [];
+    }
+
+    const scopedWords =
+      view === 'all' ? previewWords : previewWords.filter((word) => word.previewLevel === view);
+    const normalizedSearch = normalize(search.trim());
+
+    if (!normalizedSearch) {
+      return scopedWords;
+    }
+
+    return scopedWords.filter((word) => {
+      const searchable = [
+        String(word.officialSequence),
+        word.levelLabel,
+        word.hanzi,
+        word.rawHanzi,
+        word.pinyin,
+        word.partOfSpeech,
+        word.meaning,
+        word.meaningSource,
+        word.classicSourceLevel ? formatClassicHskLevel(word.classicSourceLevel) : '',
+        word.exampleSentence?.hanzi ?? '',
+        word.exampleSentence?.meaning ?? '',
+      ].join(' ');
+
+      return normalize(searchable).includes(normalizedSearch);
+    });
+  }, [previewWords, search, view]);
+  const filteredWordsByLevel = useMemo(() => {
+    const wordsByLevel = new Map<Hsk3Level, Hsk3PreviewWord[]>();
+
+    for (const option of data?.levelOptions ?? []) {
+      wordsByLevel.set(option.id, []);
+    }
+
+    for (const word of filteredWords) {
+      const existing = wordsByLevel.get(word.previewLevel) ?? [];
+      existing.push(word);
+      wordsByLevel.set(word.previewLevel, existing);
+    }
+
+    return wordsByLevel;
+  }, [data?.levelOptions, filteredWords]);
+  const level1EnglishSummary = data?.level1English?.summary ?? null;
+  const level1Summary = data?.level1Reuse?.summary ?? null;
+  const overallEnglishReadyCount = level1EnglishSummary?.coveredEntryCount ?? 0;
+  const overallSentenceSeedCount = level1Summary?.exampleSentenceCandidateEntryCount ?? 0;
+  const overallPendingEnglishCount = Math.max((data?.totalCount ?? 0) - overallEnglishReadyCount, 0);
+  const levelOverview = useMemo<Hsk3PreviewLevelOverview[]>(
+    () =>
+      (data?.levelOptions ?? []).map((option) => {
+        const totalWords = previewWordsByLevel.get(option.id) ?? [];
+        const visibleWords = filteredWordsByLevel.get(option.id) ?? [];
+        const englishReadyCount = visibleWords.filter((word) => word.meaningSource !== 'pending').length;
+        const sentenceReadyCount = visibleWords.filter((word) => Boolean(word.exampleSentence)).length;
+        const pendingEnglishCount = visibleWords.filter((word) => word.meaningSource === 'pending').length;
+
+        return {
+          id: option.id,
+          label: option.label,
+          description: option.description,
+          total: totalWords.length,
+          visibleCount: visibleWords.length,
+          englishReadyCount,
+          sentenceReadyCount,
+          pendingEnglishCount,
+          accent: HSK3_LEVEL_ACCENTS[option.id],
+          textColor: HSK3_LEVEL_TEXT_COLORS[option.id],
+          visibleWords,
+        };
+      }),
+    [data?.levelOptions, filteredWordsByLevel, previewWordsByLevel],
+  );
+  const activeLevelOption = data?.levelOptions.find((option) => option.id === view) ?? null;
+  const activeLevelOverview =
+    view === 'all' ? null : levelOverview.find((level) => level.id === view) ?? null;
+  const activeLevelWords = activeLevelOverview?.visibleWords ?? [];
+  const activeLevelWordGroups =
+    view === 'all' ? [] : getHsk3PreviewVisibleWordGroups(view, activeLevelWords);
+  const activeLevelRows = view === 'all' ? 6 : getHsk3PreviewLevelRows(view);
+  const shouldUseCanvasMap = view !== 'all' && HSK3_CANVAS_LEVELS.has(view);
+  const filteredSenseMarkerCount = filteredWords.filter((word) => word.rawHanzi !== word.hanzi).length;
+  const classicReuseBreakdown = level1Summary
+    ? formatClassicLevelBreakdown(level1Summary.preferredCandidateCountByClassicLevel)
+    : '';
+  const hasVisibleOverviewCards = levelOverview.some((level) => level.visibleCount > 0);
+  const selectPreviewWord = useCallback((word: HskWord) => {
+    setSelectedWord(word as Hsk3PreviewWord);
+  }, []);
+  const ignorePreviewWordInteraction = useCallback((_word: HskWord) => {}, []);
+
+  useEffect(() => {
+    setSelectedWord(null);
+  }, [view]);
+
+  const heroTitle =
+    view === 'all'
+      ? 'HSK 3.0 Level Overview'
+      : `${activeLevelOption?.label ?? 'HSK 3.0'} Tile Map`;
+  const overviewNote =
+    level1EnglishSummary && level1Summary
+      ? `Level 1 is fully covered in English (${level1EnglishSummary.coveredEntryCount.toLocaleString('en')} / ${level1EnglishSummary.totalEntryCount.toLocaleString('en')}) with ${level1Summary.exampleSentenceCandidateEntryCount.toLocaleString('en')} reusable sentence candidates. Every higher band is still official vocabulary only.`
+      : 'This hidden route mirrors the production map layout while HSK 3.0 content is still being built out.';
+  const levelNote =
+    view === 1 && activeLevelOverview && level1EnglishSummary && level1Summary
+      ? `${activeLevelOverview.label} currently blends ${level1EnglishSummary.reusedMeaningCount.toLocaleString('en')} reused classic meanings with ${level1EnglishSummary.authoredMeaningCount.toLocaleString('en')} new HSK 3.0 meanings. Audio is intentionally deferred.`
+      : activeLevelOverview
+        ? `${activeLevelOverview.label} is using official word, pinyin, and part-of-speech data only for now. English meanings and sentences still need to be authored for this band.`
+        : overviewNote;
+  const selectedWordMeaningLabel =
+    selectedWord?.meaningSource === 'classic_reuse' && selectedWord.classicSourceLevel
+      ? `Reused from ${formatClassicHskLevel(selectedWord.classicSourceLevel)}`
+      : selectedWord?.meaningSource === 'authored'
+        ? 'Authored for HSK 3.0'
+        : 'English pending';
+  const selectedWordMeaningTone =
+    selectedWord?.meaningSource === 'classic_reuse'
+      ? 'internal-preview-chip is-positive'
+      : selectedWord?.meaningSource === 'authored'
+        ? 'internal-preview-chip is-neutral'
+        : 'internal-preview-chip is-warning';
+  const activeLevelStats = activeLevelOverview
+    ? [
+        {
+          label: 'Words in band',
+          value: activeLevelOverview.total.toLocaleString('en'),
+          note: activeLevelOverview.description,
+        },
+        {
+          label: 'English ready',
+          value: activeLevelOverview.englishReadyCount.toLocaleString('en'),
+          note: activeLevelOverview.visibleCount
+            ? `${formatHsk3PreviewRate(activeLevelOverview.englishReadyCount / activeLevelOverview.visibleCount)} of visible words`
+            : 'No visible words',
+        },
+        {
+          label: 'Sentence seeds',
+          value: activeLevelOverview.sentenceReadyCount.toLocaleString('en'),
+          note: activeLevelOverview.visibleCount
+            ? `${formatHsk3PreviewRate(activeLevelOverview.sentenceReadyCount / activeLevelOverview.visibleCount)} of visible words`
+            : 'No visible words',
+        },
+        {
+          label: 'Pending English',
+          value: activeLevelOverview.pendingEnglishCount.toLocaleString('en'),
+          note: activeLevelOverview.visibleCount
+            ? `${formatHsk3PreviewRate(activeLevelOverview.pendingEnglishCount / activeLevelOverview.visibleCount)} of visible words`
+            : 'No visible words',
+        },
+      ]
+    : [];
+
+  return (
+    <main className="app-shell hsk3-preview-shell" dir="ltr" lang="en">
+      <header className="hero">
+        <div>
+          <p className="eyebrow">Internal HSK 3.0 preview</p>
+          <h1>{heroTitle}</h1>
+          <p className="hsk3-preview-copy">
+            This route stays hidden from the public UI. Open it directly at
+            {' '}
+            <code>{HSK3_INTERNAL_PREVIEW_PATH}</code>
+            {' '}
+            while HSK 3.0 rollout work is still in progress.
+          </p>
+        </div>
+
+        <div className="progress-card" aria-label="HSK 3.0 rollout summary">
+          <div>
+            <span className="progress-number">{data ? data.totalCount.toLocaleString('en') : '...'}</span>
+            <span className="progress-label">Imported</span>
+          </div>
+          <div>
+            <span className="progress-number">{overallEnglishReadyCount.toLocaleString('en')}</span>
+            <span className="progress-label">English ready</span>
+          </div>
+          <div>
+            <span className="progress-number">{overallSentenceSeedCount.toLocaleString('en')}</span>
+            <span className="progress-label">Sentence seeds</span>
+          </div>
+          <div>
+            <span className="progress-number">{overallPendingEnglishCount.toLocaleString('en')}</span>
+            <span className="progress-label">Pending</span>
+          </div>
+        </div>
+      </header>
+
+      <section className="toolbar hsk3-preview-toolbar" aria-label="HSK 3.0 preview controls">
+        <div className="level-tabs" role="group" aria-label="HSK 3.0 level">
+          <button className={view === 'all' ? 'active' : ''} type="button" onClick={() => onViewChange('all')}>
+            <span>All HSK 3.0</span>
+            <small>{data ? `${data.totalCount.toLocaleString('en')} total` : 'Loading'}</small>
+          </button>
+          {data?.levelOptions.map((option) => (
+            <button
+              className={view === option.id ? 'active' : ''}
+              key={option.id}
+              type="button"
+              onClick={() => onViewChange(option.id)}
+            >
+              <span>{option.label}</span>
+              <small>{option.description}</small>
+            </button>
+          ))}
+        </div>
+
+        <label className="search-field">
+          <span>Search</span>
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Sequence, hanzi, pinyin, or English meaning"
+          />
+        </label>
+
+        <div className="toolbar-meta">
+          <span>{filteredWords.length.toLocaleString('en')} shown</span>
+          <span>{activeLevelOption?.label ?? 'Overview'}</span>
+        </div>
+      </section>
+
+      {error ? (
+        <div className="empty-state" role="alert">
+          <h2>Could not load HSK 3.0 preview data.</h2>
+          <p>{error}</p>
+        </div>
+      ) : isLoading ? (
+        <div className="empty-state" aria-busy="true">
+          <h2>Loading HSK 3.0 preview data...</h2>
+        </div>
+      ) : !data?.hasImported ? (
+        <div className="empty-state" role="alert">
+          <h2>HSK 3.0 data has not been imported yet.</h2>
+          <p>Run the HSK 3.0 import pipeline before using this preview route.</p>
+        </div>
+      ) : (
+        <>
+          <section className="hsk3-preview-brief">
+            <p>{view === 'all' ? overviewNote : levelNote}</p>
+            <div className="hsk3-preview-brief-meta">
+              <span>
+                Source:
+                {' '}
+                <a href={data.sourceUrl} rel="noreferrer" target="_blank">
+                  official CTI syllabus PDF
+                </a>
+              </span>
+              <span>Implementation target: {data.implemented}</span>
+              <span>{filteredSenseMarkerCount.toLocaleString('en')} sense-marked entries in this view</span>
+              {view === 1 && classicReuseBreakdown ? (
+                <span>Classic reuse: {classicReuseBreakdown}</span>
+              ) : null}
+            </div>
+          </section>
+
+          {view === 'all' ? (
+            hasVisibleOverviewCards ? (
+              <section className="level-overview" aria-label="HSK 3.0 level overview">
+                {levelOverview.map((level) => {
+                  const pendingShare = level.total ? level.pendingEnglishCount / level.total : 0;
+
+                  return (
+                    <article
+                      className={level.visibleCount ? 'level-card' : 'level-card is-empty'}
+                      key={level.id}
+                      style={
+                        {
+                          '--cluster-accent': level.accent,
+                          '--level-text': level.textColor,
+                        } as React.CSSProperties
+                      }
+                    >
+                      <button
+                        aria-disabled={!level.visibleCount}
+                        className="level-card-main"
+                        type="button"
+                        onClick={() => {
+                          if (!level.visibleCount) {
+                            return;
+                          }
+
+                          onViewChange(level.id);
+                        }}
+                      >
+                        <span className="level-card-kicker">{level.description}</span>
+                        <span className="level-card-title">{level.label.replace('HSK ', '')}</span>
+                        <span className="level-card-count">
+                          {level.visibleCount.toLocaleString('en')}
+                          {' / '}
+                          {level.total.toLocaleString('en')} shown
+                        </span>
+                      </button>
+
+                      <div className="level-progress" aria-label={`${level.label} coverage`}>
+                        <span style={{ width: `${Math.min(100, (level.englishReadyCount / Math.max(level.total, 1)) * 100)}%` }} />
+                        <span style={{ width: `${Math.min(100, pendingShare * 100)}%` }} />
+                      </div>
+
+                      <div className="level-card-stats">
+                        <span>{level.englishReadyCount.toLocaleString('en')} meanings</span>
+                        <span>{level.sentenceReadyCount.toLocaleString('en')} sentence seeds</span>
+                        <span>{level.pendingEnglishCount.toLocaleString('en')} pending</span>
+                      </div>
+
+                      {level.visibleWords.length ? (
+                        <div className="level-word-preview" aria-label={`${level.label} matching words`}>
+                          {level.visibleWords.slice(0, 10).map((word) => (
+                            <button
+                              className="preview-word"
+                              key={word.id}
+                              type="button"
+                              onClick={() => selectPreviewWord(word)}
+                            >
+                              {getTileLabel(word.hanzi)}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="level-empty-note">No matches in this band.</p>
+                      )}
+                    </article>
+                  );
+                })}
+              </section>
+            ) : (
+              <div className="empty-state">
+                <h2>No HSK 3.0 words match this search.</h2>
+                <p>Try a different search or open a specific band from the tabs above.</p>
+              </div>
+            )
+          ) : (
+            <>
+              {activeLevelOverview ? (
+                <div className="progress-card hsk3-preview-progress-card" aria-label={`${activeLevelOverview.label} rollout summary`}>
+                  {activeLevelStats.map((stat) => (
+                    <div key={stat.label}>
+                      <span className="progress-number">{stat.value}</span>
+                      <span className="progress-label">{stat.label}</span>
+                      <small className="hsk3-preview-progress-note">{stat.note}</small>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <section className="map-shell" aria-label={`${activeLevelOption?.label ?? 'HSK 3.0'} word map`}>
+                {shouldUseCanvasMap && activeLevelOverview?.visibleWords.length ? (
+                  <CanvasWordMap
+                    hoverWarmupEnabled={false}
+                    language="en"
+                    localizedMeanings={EMPTY_LOCALIZED_MEANINGS}
+                    levelGridRows={activeLevelRows}
+                    onFocusIntentWord={ignorePreviewWordInteraction}
+                    onHoverWarmupWord={ignorePreviewWordInteraction}
+                    onPointerIntentWord={ignorePreviewWordInteraction}
+                    onSelectWord={selectPreviewWord}
+                    progress={HSK3_PREVIEW_PROGRESS}
+                    pulsingWordId={selectedWord?.id ?? null}
+                    selectedViewLabel={activeLevelOverview.label}
+                    ui={HSK3_PREVIEW_UI}
+                    wordGroups={activeLevelWordGroups}
+                    words={activeLevelOverview.visibleWords}
+                  />
+                ) : (
+                  <div
+                    className="poster-scroll hsk3-preview-static-map"
+                    aria-label={`${activeLevelOption?.label ?? 'HSK 3.0'} static word map`}
+                    role="region"
+                    style={{ '--tile-size': formatPixelValue(72) } as React.CSSProperties}
+                  >
+                    {activeLevelOverview?.visibleWords.length ? (
+                      <div className="poster-zoom-space">
+                        <div
+                          className={
+                            activeLevelWordGroups.length > 1
+                              ? 'poster-board is-split-word-grid'
+                              : 'poster-board'
+                          }
+                        >
+                          {activeLevelWordGroups.map((wordGroup, groupIndex) => (
+                            <div
+                              className="tile-grid level-word-grid"
+                              aria-label={
+                                activeLevelWordGroups.length > 1
+                                  ? `${activeLevelOverview.label} words ${wordGroup.startIndex + 1}-${wordGroup.startIndex + wordGroup.words.length}`
+                                  : activeLevelOverview.label
+                              }
+                              key={`${activeLevelOverview.label}-${groupIndex}`}
+                              style={{ '--level-rows': activeLevelRows } as React.CSSProperties}
+                            >
+                              {wordGroup.words.map((word) => (
+                                <TileButton
+                                  className={selectedWord?.id === word.id ? 'status-flash' : undefined}
+                                  isPulsing={false}
+                                  key={word.id}
+                                  meaning={word.meaning}
+                                  onFocusIntent={ignorePreviewWordInteraction}
+                                  onHoverEnd={ignorePreviewWordInteraction}
+                                  onHoverStart={ignorePreviewWordInteraction}
+                                  onPointerIntent={ignorePreviewWordInteraction}
+                                  onSelect={selectPreviewWord}
+                                  status={undefined}
+                                  word={word}
+                                />
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="empty-state">
+                        <h2>No HSK 3.0 words match this band.</h2>
+                        <p>Try a different search or switch bands above.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
+
+              {selectedWord ? (
+                <>
+                <Hsk3PreviewDetailModal
+                  key={selectedWord.id}
+                  onClose={() => setSelectedWord(null)}
+                  word={selectedWord}
+                />
+                <section
+                  ref={detailRef}
+                  className="hsk3-preview-detail"
+                  aria-labelledby="hsk3-preview-detail-title"
+                  hidden
+                >
+                  <div className="hsk3-preview-detail-head">
+                    <div>
+                      <p className="eyebrow">Selected Entry</p>
+                      <h2 id="hsk3-preview-detail-title">{selectedWord.hanzi}</h2>
+                      <p className="hsk3-preview-detail-copy">
+                        {selectedWord.pinyin}
+                        {' · '}
+                        {selectedWord.meaning}
+                      </p>
+                    </div>
+
+                    <div className="hsk3-preview-badge-row">
+                      <span className={selectedWordMeaningTone}>{selectedWordMeaningLabel}</span>
+                      {selectedWord.rawHanzi !== selectedWord.hanzi ? (
+                        <span className="internal-preview-sense-badge">Raw form: {selectedWord.rawHanzi}</span>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="hsk3-preview-detail-grid">
+                    <div>
+                      <span>Official sequence</span>
+                      <strong>#{selectedWord.officialSequence.toLocaleString('en')}</strong>
+                    </div>
+                    <div>
+                      <span>Level label</span>
+                      <strong>{selectedWord.levelLabel}</strong>
+                    </div>
+                    <div>
+                      <span>Part of speech</span>
+                      <strong>{selectedWord.partOfSpeech || 'Not tagged'}</strong>
+                    </div>
+                    <div>
+                      <span>Classic source</span>
+                      <strong>
+                        {selectedWord.classicSourceLevel
+                          ? formatClassicHskLevel(selectedWord.classicSourceLevel)
+                          : 'No exact classic match'}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {selectedWord.exampleSentence ? (
+                    <div className="hsk3-preview-sentence">
+                      <p className="sentence-kicker">Sentence candidate</p>
+                      <p className="sentence-hanzi">{selectedWord.exampleSentence.hanzi}</p>
+                      <p className="sentence-pinyin">{selectedWord.exampleSentence.pinyin}</p>
+                      <p className="sentence-detail">{selectedWord.exampleSentence.meaning}</p>
+                      <p className="hsk3-preview-sentence-note">
+                        {selectedWord.sentenceSourceLevel
+                          ? `${getSentenceReuseLabel(selectedWord.exampleSentence, {
+                              classicId: '',
+                              classicLevel: selectedWord.sentenceSourceLevel,
+                              hanzi: selectedWord.hanzi,
+                              pinyin: selectedWord.pinyin,
+                              meaning: selectedWord.meaning,
+                              cluster: selectedWord.cluster,
+                              exampleSentence: selectedWord.exampleSentence,
+                              audio: null,
+                            })} from ${formatClassicHskLevel(selectedWord.sentenceSourceLevel)}`
+                          : 'Reusable classic sentence'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="hsk3-preview-sentence is-empty">
+                      <p className="sentence-kicker">Sentence work</p>
+                      <p>
+                        {selectedWord.previewLevel === 1
+                          ? 'This Level 1 word still needs a new sentence written for HSK 3.0.'
+                          : 'Sentence authoring has not started for this band yet.'}
+                      </p>
+                    </div>
+                  )}
+                </section>
+                </>
+              ) : null}
+            </>
+          )}
+        </>
+      )}
+    </main>
+  );
+}
+
 function App() {
   useLayoutEffect(() => {
     document.documentElement.classList.remove('app-loading');
   }, []);
 
+  const [isInternalHsk3Preview, setIsInternalHsk3Preview] = useState(getInitialIsInternalHsk3Preview);
+  const [hsk3PreviewView, setHsk3PreviewView] = useState<Hsk3PreviewView>('all');
+  const [hsk3PreviewSearch, setHsk3PreviewSearch] = useState('');
+  const [hsk3PreviewData, setHsk3PreviewData] = useState<Hsk3PreviewData | null>(null);
+  const [hsk3PreviewError, setHsk3PreviewError] = useState<string | null>(null);
   const [selectedView, setSelectedView] = useState<HskView>(getInitialSelectedView);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterMode>('all');
@@ -2323,6 +3866,7 @@ function App() {
       });
     }
 
+    setIsInternalHsk3Preview(false);
     setLanguage(nextLanguage);
     setSelectedView(nextView);
     setSelectedWord(null);
@@ -2431,6 +3975,7 @@ function App() {
 
   useEffect(() => {
     const handlePopState = () => {
+      setIsInternalHsk3Preview(isInternalHsk3PreviewPath(window.location.pathname));
       const nextRoute = getAppRouteFromPath(window.location.pathname);
       setLanguage(nextRoute.language);
       setSelectedView(nextRoute.view);
@@ -2442,7 +3987,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
+    if (isInternalHsk3Preview || typeof window === 'undefined') {
       return;
     }
 
@@ -2453,7 +3998,77 @@ function App() {
 
     lastTrackedPageRef.current = pageKey;
     captureAnalyticsPageView(getRouteAnalyticsProperties(language, selectedView));
-  }, [language, selectedView]);
+  }, [isInternalHsk3Preview, language, selectedView]);
+
+  useEffect(() => {
+    if (!isInternalHsk3Preview) {
+      setHsk3PreviewError(null);
+      return;
+    }
+
+    let ignoreLoad = false;
+    setHsk3PreviewError(null);
+
+    Promise.all([
+      import('./data/hsk3'),
+      import('./data/hsk3/level1Reuse'),
+      import('./data/hsk3/level1English'),
+    ])
+      .then(([vocabularyModule, level1ReuseModule, level1EnglishModule]) => {
+        if (ignoreLoad) {
+          return;
+        }
+
+        const normalizedEntries = vocabularyModule.HSK3_NORMALIZED_OFFICIAL_VOCABULARY.entries;
+        setHsk3PreviewData({
+          entries: normalizedEntries,
+          hasImported: vocabularyModule.HSK3_HAS_IMPORTED_OFFICIAL_VOCABULARY,
+          implemented: vocabularyModule.HSK3_SOURCE_MANIFEST.canonicalSource.implemented,
+          level1English: level1EnglishModule.HSK3_LEVEL1_ENGLISH_PAYLOAD,
+          level1Reuse: level1ReuseModule.HSK3_LEVEL1_CLASSIC_REUSE_PAYLOAD,
+          levelOptions: vocabularyModule.HSK3_LEVEL_OPTIONS.map((option) => ({
+            id: option.id,
+            label: option.label,
+            description: option.description,
+          })),
+          senseMarkerCount: normalizedEntries.filter((entry) => entry.hasSenseMarker).length,
+          sourceUrl: vocabularyModule.HSK3_SOURCE_MANIFEST.canonicalSource.url,
+          totalCount: vocabularyModule.HSK3_OFFICIAL_TOTAL_WORD_COUNT,
+        });
+      })
+      .catch((error: unknown) => {
+        if (ignoreLoad) {
+          return;
+        }
+
+        console.error('Could not load HSK 3.0 preview data.', error);
+        setHsk3PreviewError(error instanceof Error ? error.message : 'Unknown loading error');
+      });
+
+    return () => {
+      ignoreLoad = true;
+    };
+  }, [isInternalHsk3Preview]);
+
+  useEffect(() => {
+    if (!isInternalHsk3Preview) {
+      return;
+    }
+
+    const previousTitle = document.title;
+    document.title = 'HSK 3.0 Internal Preview | HSKMAP';
+    return () => {
+      document.title = previousTitle;
+    };
+  }, [isInternalHsk3Preview]);
+
+  useEffect(() => {
+    if (!isInternalHsk3Preview) {
+      return;
+    }
+
+    return setRobotsMetaContent('noindex, nofollow, noarchive');
+  }, [isInternalHsk3Preview]);
 
   useEffect(() => {
     if (language === 'en' || !translationLevelsToLoad.length) {
@@ -2589,7 +4204,7 @@ function App() {
   useEffect(() => {
     window.clearTimeout(searchTrackingTimerRef.current);
     const normalizedSearchLength = search.trim().length;
-    if (normalizedSearchLength === 0) {
+    if (isInternalHsk3Preview || normalizedSearchLength === 0) {
       return;
     }
 
@@ -2602,7 +4217,7 @@ function App() {
     }, 700);
 
     return () => window.clearTimeout(searchTrackingTimerRef.current);
-  }, [language, search, selectedView, visibleCount]);
+  }, [isInternalHsk3Preview, language, search, selectedView, visibleCount]);
 
   const constrainMapCamera = useCallback((camera: MapCamera) => {
     const viewport = posterViewportRef.current;
@@ -3080,6 +4695,20 @@ function App() {
     didDragRef.current = false;
   }, []);
   const selectedWordAudioFeedback = selectedWord ? getAudioFeedback(getWordAudioSrc(selectedWord)) : null;
+
+  if (isInternalHsk3Preview) {
+    return (
+      <Hsk3InternalPreview
+        data={hsk3PreviewData}
+        error={hsk3PreviewError}
+        isLoading={!hsk3PreviewData && !hsk3PreviewError}
+        onSearchChange={setHsk3PreviewSearch}
+        onViewChange={setHsk3PreviewView}
+        search={hsk3PreviewSearch}
+        view={hsk3PreviewView}
+      />
+    );
+  }
 
   return (
     <main className="app-shell" lang={ui.htmlLang} dir={ui.direction}>
