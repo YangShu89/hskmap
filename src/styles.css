@@ -801,6 +801,10 @@ h1 {
   display: contents;
 }
 
+.mobile-prompt-mode-tabs {
+  display: none;
+}
+
 .search-field {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -2707,6 +2711,7 @@ h1 {
   }
 
   .mobile-toolbar-summary,
+  .mobile-prompt-mode-tabs,
   .search-field,
   .filter-tabs,
   .study-mode-tabs,
@@ -2724,6 +2729,14 @@ h1 {
     padding: 4px 5px 4px 8px;
     border-radius: 8px;
     background: #f8fafc;
+  }
+
+  .mobile-prompt-mode-tabs {
+    display: flex;
+  }
+
+  .menu-prompt-mode-tabs {
+    display: none;
   }
 
   .mobile-toolbar-status {
@@ -2860,6 +2873,12 @@ h1 {
   .study-mode-tabs button,
   .language-tabs a {
     flex: 0 0 auto;
+  }
+
+  .mobile-prompt-mode-tabs button {
+    flex: 1 1 0;
+    min-width: 0;
+    text-align: center;
   }
 
   .level-tabs a,
