@@ -48,7 +48,7 @@ import { getUiCopy, type UiCopy } from './uiCopy';
 
 type FilterMode = 'all' | 'learning' | 'know' | 'unmarked';
 type FlashcardPromptMode = 'chinese' | 'translation';
-type WritingMode = 'watch' | 'practice';
+type WritingMode = 'watch' | 'practice' | 'recall';
 type Hsk3PreviewView = 'all' | Hsk3Level;
 
 interface MapCamera {
@@ -1635,6 +1635,9 @@ function CanvasWordMap({
 
 function HanziWriterCard({
   hanzi,
+  enableRecallMode = false,
+  recallMeaning,
+  recallPinyin,
   ui,
   onWritingPracticeComplete,
   onWritingPracticeHint,
@@ -1642,6 +1645,9 @@ function HanziWriterCard({
   onWritingReplay,
 }: {
   hanzi: string;
+  enableRecallMode?: boolean;
+  recallMeaning?: string;
+  recallPinyin?: string;
   ui: UiCopy;
   onWritingPracticeComplete?: () => void;
   onWritingPracticeHint?: () => void;
@@ -1667,6 +1673,8 @@ function HanziWriterCard({
   const [practiceState, setPracticeState] = useState<PracticeFeedback>(practiceFeedback);
   const completedPracticeCount = completedCharacters.filter(Boolean).length;
   const isPracticeComplete = characters.length > 0 && completedPracticeCount === characters.length;
+  const isPracticeMode = mode === 'practice' || mode === 'recall';
+  const isRecallMode = mode === 'recall';
 
   const animateCharacters = useCallback(async () => {
     for (const writer of writerRefs.current) {
@@ -1732,7 +1740,7 @@ function HanziWriterCard({
   }, [animateCharacters, characters, mode]);
 
   useEffect(() => {
-    if (mode !== 'practice' || !activePracticeCharacter) {
+    if (!isPracticeMode || !activePracticeCharacter) {
       return undefined;
     }
 
@@ -1743,12 +1751,14 @@ function HanziWriterCard({
 
     setLoadError(null);
     target.replaceChildren();
+    const showOutline = !isRecallMode;
+    const showHintAfterMisses = isRecallMode ? 3 : 2;
     practiceWriterRef.current = HanziWriter.create(target, activePracticeCharacter, {
       width: 220,
       height: 220,
       padding: 12,
       showCharacter: false,
-      showOutline: true,
+      showOutline,
       drawingColor: '#2563eb',
       drawingWidth: 18,
       strokeColor: '#0f172a',
@@ -1756,7 +1766,7 @@ function HanziWriterCard({
       radicalColor: '#ef4444',
       highlightColor: '#facc15',
       highlightOnComplete: true,
-      showHintAfterMisses: 2,
+      showHintAfterMisses,
       onLoadCharDataSuccess: (data) => {
         setPracticeState((current) => ({
           ...current,
@@ -1770,7 +1780,7 @@ function HanziWriterCard({
     });
 
     void practiceWriterRef.current.quiz({
-      showHintAfterMisses: 2,
+      showHintAfterMisses,
       onMistake: (strokeData) => {
         const progress = getStrokeProgress(strokeData, false);
         setPracticeState({
@@ -1825,6 +1835,8 @@ function HanziWriterCard({
   }, [
     activePracticeCharacter,
     characters.length,
+    isPracticeMode,
+    isRecallMode,
     mode,
     onWritingPracticeComplete,
     practiceIndex,
@@ -1836,7 +1848,7 @@ function HanziWriterCard({
     (nextMode: WritingMode) => {
       setMode(nextMode);
 
-      if (nextMode === 'practice') {
+      if (nextMode === 'practice' || nextMode === 'recall') {
         setPracticeIndex(0);
         setPracticeResetKey((key) => key + 1);
         setCompletedCharacters(characters.map(() => false));
@@ -1862,8 +1874,25 @@ function HanziWriterCard({
     return null;
   }
 
+  const writingCardClassName = ['writing-card', isPracticeMode ? 'is-practice' : '', isRecallMode ? 'is-recall' : '']
+    .filter(Boolean)
+    .join(' ');
+  const recallPrompt = [recallMeaning, recallPinyin].filter(Boolean).join(' · ');
+  const displayedPracticeMessage = isRecallMode
+    ? practiceState.isComplete
+      ? practiceIndex < characters.length - 1
+        ? ui.writing.characterStep(practiceIndex + 1, characters.length)
+        : ui.writing.wordComplete
+      : recallPrompt
+        ? `${ui.writing.writePrompt}: ${recallPrompt}`
+        : practiceState.message
+          .replace(activePracticeCharacter, '')
+          .replace(hanzi, '')
+          .trim() || ui.writing.recall
+    : practiceState.message;
+
   return (
-    <div className={mode === 'practice' ? 'writing-card is-practice' : 'writing-card'}>
+    <div className={writingCardClassName}>
       <div className="writing-card-header">
         <p className="writing-kicker">{ui.writing.strokeOrder}</p>
         <div className="writing-card-controls">
@@ -1882,6 +1911,15 @@ function HanziWriterCard({
             >
               {ui.writing.practice}
             </button>
+            {enableRecallMode ? (
+              <button
+                className={mode === 'recall' ? 'active' : ''}
+                type="button"
+                onClick={() => handleModeChange('recall')}
+              >
+                {ui.writing.recall}
+              </button>
+            ) : null}
           </div>
           {mode === 'watch' ? (
             <button
@@ -1921,13 +1959,13 @@ function HanziWriterCard({
         <div className="practice-panel">
           <div className="practice-meta">
             <div>
-              <span className="practice-word">{hanzi}</span>
+              <span className="practice-word">{isRecallMode ? ui.writing.recall : hanzi}</span>
               <span className="practice-step">
                 {ui.writing.characterStep(practiceIndex + 1, characters.length)}
               </span>
             </div>
             <div className={practiceState.isComplete ? 'practice-message is-complete' : 'practice-message'}>
-              {practiceState.message}
+              {displayedPracticeMessage}
             </div>
           </div>
 
@@ -1937,7 +1975,7 @@ function HanziWriterCard({
                 className="writer-target practice-target"
                 key={`${activePracticeCharacter}-${practiceIndex}-${practiceResetKey}`}
                 ref={practiceTargetRef}
-                aria-label={ui.writing.practiceWriting(activePracticeCharacter)}
+                aria-label={isRecallMode ? ui.writing.recall : ui.writing.practiceWriting(activePracticeCharacter)}
               />
             </div>
             <div className="practice-sidebar">
@@ -1954,7 +1992,7 @@ function HanziWriterCard({
                     type="button"
                     onClick={() => setPracticeIndex(index)}
                   >
-                    {character}
+                    {isRecallMode ? index + 1 : character}
                   </button>
                 ))}
               </div>
@@ -2203,7 +2241,7 @@ function DetailModal({
           </div>
 
           <div className={isAnswerVisible ? 'modal-answer is-visible' : 'modal-answer'} id="word-detail-answer">
-            {word.examples?.length ? (
+            {word.examples?.length && !word.exampleSentence ? (
               <div className="examples">
                 {word.examples.map((example) => (
                   <p key={example}>{example}</p>
@@ -2215,7 +2253,10 @@ function DetailModal({
           {hasWritingAnimation ? (
             <div className={isRecallContentLocked ? 'recall-locked-content is-locked' : 'recall-locked-content'}>
               <HanziWriterCard
+                enableRecallMode
                 hanzi={word.hanzi}
+                recallMeaning={wordMeaning}
+                recallPinyin={word.pinyin}
                 ui={ui}
                 onWritingPracticeComplete={() => onWritingPracticeComplete(word)}
                 onWritingPracticeHint={() => onWritingPracticeHint(word)}
@@ -2473,7 +2514,15 @@ function Hsk3PreviewDetailModal({
             </div>
           </div>
 
-          {hasWritingAnimation ? <HanziWriterCard hanzi={word.hanzi} ui={HSK3_PREVIEW_UI} /> : null}
+          {hasWritingAnimation ? (
+            <HanziWriterCard
+              enableRecallMode
+              hanzi={word.hanzi}
+              recallMeaning={word.meaning}
+              recallPinyin={word.pinyin}
+              ui={HSK3_PREVIEW_UI}
+            />
+          ) : null}
 
           {word.exampleSentence ? (
             <div

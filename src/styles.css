@@ -1709,7 +1709,9 @@ h1 {
 
 .modal-scroll {
   flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 0 28px 34px;
@@ -1992,6 +1994,7 @@ h1 {
 .writing-card {
   display: grid;
   gap: 14px;
+  min-width: 0;
   margin-top: 18px;
   padding: 16px 18px;
   border: 1px solid rgba(37, 99, 235, 0.18);
@@ -2002,6 +2005,7 @@ h1 {
 .writing-card-header {
   display: flex;
   gap: 12px;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
 }
@@ -2010,6 +2014,7 @@ h1 {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
   justify-content: flex-end;
 }
 
@@ -2025,12 +2030,14 @@ h1 {
 .writing-mode-tabs {
   display: flex;
   gap: 4px;
+  min-width: 0;
   padding: 4px;
   border-radius: 8px;
   background: #dbeafe;
 }
 
 .writing-mode-tabs button {
+  min-width: 0;
   min-height: 32px;
   padding: 0 12px;
   border: 0;
@@ -2143,6 +2150,8 @@ h1 {
 
 .practice-message {
   min-height: 34px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   padding: 8px 12px;
   border-radius: 7px;
   color: #1e40af;
@@ -2158,13 +2167,14 @@ h1 {
 
 .practice-body {
   display: grid;
-  grid-template-columns: auto minmax(160px, 1fr);
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
 
 .practice-target-wrap {
   display: grid;
+  min-width: 0;
   place-items: center;
 }
 
@@ -2177,6 +2187,7 @@ h1 {
 .practice-sidebar {
   display: grid;
   gap: 12px;
+  min-width: 0;
   align-content: start;
 }
 
@@ -2938,15 +2949,15 @@ h1 {
   }
 
   .modal-topbar {
-    padding: 22px 22px 0;
+    padding: 18px 16px 0;
   }
 
   .modal-scroll {
-    padding: 0 22px 28px;
+    padding: 0 16px 28px;
   }
 
   .modal-footer {
-    padding: 16px 22px 22px;
+    padding: 16px;
   }
 
   .modal-actions,
@@ -2966,6 +2977,25 @@ h1 {
   .reset-dialog-cancel,
   .reset-dialog-confirm {
     width: 100%;
+  }
+
+  .modal-actions {
+    gap: 8px;
+  }
+
+  .modal-status-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .modal-status-actions .status-action.muted {
+    grid-column: 1 / -1;
+  }
+
+  .audio-button,
+  .status-action {
+    min-height: 48px;
   }
 
   .flashcard-card,
@@ -3001,11 +3031,14 @@ h1 {
 
   .writing-mode-tabs button {
     flex: 1;
+    padding-right: 8px;
+    padding-left: 8px;
+    white-space: normal;
   }
 
   .practice-target {
-    width: min(220px, 100%);
-    height: min(220px, calc(100vw - 80px));
+    width: min(220px, calc(100vw - 72px));
+    height: min(220px, calc(100vw - 72px));
   }
 }
 
@@ -3018,5 +3051,70 @@ h1 {
 
   .mobile-controls-label {
     display: none;
+  }
+
+  .modal-backdrop {
+    padding: 6px;
+  }
+
+  .word-modal {
+    width: min(100%, calc(100vw - 12px));
+    height: calc(100svh - 12px);
+    max-height: calc(100svh - 12px);
+  }
+
+  .modal-topbar {
+    padding: 14px 12px 0;
+  }
+
+  .modal-scroll {
+    padding: 0 12px 22px;
+  }
+
+  .modal-footer {
+    padding: 12px;
+  }
+
+  .modal-actions {
+    gap: 8px;
+  }
+
+  .modal-status-actions {
+    gap: 8px;
+  }
+
+  .audio-button,
+  .status-action {
+    min-height: 44px;
+    padding-right: 10px;
+    padding-left: 10px;
+    font-size: 0.88rem;
+    line-height: 1.1;
+  }
+
+  .writing-card {
+    padding: 12px;
+  }
+
+  .writing-mode-tabs {
+    gap: 2px;
+    padding: 3px;
+  }
+
+  .writing-mode-tabs button {
+    min-height: 36px;
+    padding-right: 5px;
+    padding-left: 5px;
+    font-size: 0.72rem;
+  }
+
+  .practice-message {
+    font-size: 0.78rem;
+    line-height: 1.2;
+  }
+
+  .practice-target {
+    width: min(220px, calc(100vw - 60px));
+    height: min(220px, calc(100vw - 60px));
   }
 }
