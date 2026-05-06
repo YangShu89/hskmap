@@ -4788,23 +4788,6 @@ function App() {
           </button>
         </div>
 
-        <div
-          className="study-mode-tabs mobile-prompt-mode-tabs"
-          role="group"
-          aria-label={ui.flashcardPromptSide}
-        >
-          {FLASHCARD_PROMPT_MODES.map((mode) => (
-            <button
-              className={flashcardPromptMode === mode.id ? 'active' : ''}
-              key={mode.id}
-              type="button"
-              onClick={() => handleFlashcardPromptModeChange(mode.id)}
-            >
-              {ui.promptModes[mode.id]}
-            </button>
-          ))}
-        </div>
-
         <div className="mobile-control-panel" id="mobile-controls-panel">
           <label className="search-field">
             <span>{ui.searchLabel}</span>
@@ -4829,11 +4812,7 @@ function App() {
             ))}
           </div>
 
-          <div
-            className="study-mode-tabs menu-prompt-mode-tabs"
-            role="group"
-            aria-label={ui.flashcardPromptSide}
-          >
+          <div className="study-mode-tabs" role="group" aria-label={ui.flashcardPromptSide}>
             {FLASHCARD_PROMPT_MODES.map((mode) => (
               <button
                 className={flashcardPromptMode === mode.id ? 'active' : ''}
