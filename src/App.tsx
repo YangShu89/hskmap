@@ -3867,6 +3867,7 @@ function App() {
     scale: DEFAULT_ZOOM,
   });
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+  const toolbarRef = useRef<HTMLElement | null>(null);
   const posterViewportRef = useRef<HTMLDivElement | null>(null);
   const posterBoardRef = useRef<HTMLDivElement | null>(null);
   const lastTrackedPageRef = useRef('');
@@ -3900,6 +3901,12 @@ function App() {
     warmup: warmupSpeechAudio,
   } = useMandarinSpeech(ui.speech);
   const hoverWarmupEnabled = useDesktopHoverWarmupEnabled();
+  const closeMobileControls = useCallback(() => {
+    setIsMobileControlsOpen(false);
+  }, []);
+  const toggleMobileControls = useCallback(() => {
+    setIsMobileControlsOpen((isOpen) => !isOpen);
+  }, []);
   const navigateToRoute = useCallback((nextLanguage: TranslationLanguage, nextView: HskView) => {
     if (nextLanguage !== language) {
       captureAnalyticsEvent('language_changed', {
@@ -3919,6 +3926,7 @@ function App() {
     setLanguage(nextLanguage);
     setSelectedView(nextView);
     setSelectedWord(null);
+    closeMobileControls();
 
     if (typeof window === 'undefined') {
       return;
@@ -3928,7 +3936,7 @@ function App() {
     if (window.location.pathname !== nextPath) {
       window.history.pushState({ hskmap: true }, '', nextPath);
     }
-  }, [language, selectedView]);
+  }, [closeMobileControls, language, selectedView]);
   const levelsToLoad = useMemo<readonly HskLevel[]>(
     () => (selectedView === 'all' ? HSK_LEVELS : [selectedView]),
     [selectedView],
@@ -4029,11 +4037,40 @@ function App() {
       setLanguage(nextRoute.language);
       setSelectedView(nextRoute.view);
       setSelectedWord(null);
+      closeMobileControls();
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [closeMobileControls]);
+
+  useEffect(() => {
+    if (!isMobileControlsOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && toolbarRef.current?.contains(target)) {
+        return;
+      }
+
+      closeMobileControls();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeMobileControls();
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [closeMobileControls, isMobileControlsOpen]);
 
   useEffect(() => {
     if (isInternalHsk3Preview || typeof window === 'undefined') {
@@ -4305,23 +4342,25 @@ function App() {
   const handleFilterChange = useCallback(
     (nextFilter: FilterMode) => {
       setFilter(nextFilter);
+      closeMobileControls();
       captureAnalyticsEvent('filter_changed', {
         ...getRouteAnalyticsProperties(language, selectedView),
         filter: nextFilter,
       });
     },
-    [language, selectedView],
+    [closeMobileControls, language, selectedView],
   );
 
   const handleFlashcardPromptModeChange = useCallback(
     (nextMode: FlashcardPromptMode) => {
       setFlashcardPromptMode(nextMode);
+      closeMobileControls();
       captureAnalyticsEvent('flashcard_prompt_mode_changed', {
         ...getRouteAnalyticsProperties(language, selectedView),
         prompt_mode: nextMode,
       });
     },
-    [language, selectedView],
+    [closeMobileControls, language, selectedView],
   );
 
   const handleSetStatus = useCallback(
@@ -4356,8 +4395,9 @@ function App() {
   );
 
   const handleReset = useCallback(() => {
+    closeMobileControls();
     setIsResetDialogOpen(true);
-  }, []);
+  }, [closeMobileControls]);
 
   const handleCancelReset = useCallback(() => {
     setIsResetDialogOpen(false);
@@ -4791,6 +4831,7 @@ function App() {
         aria-label={ui.mapControls}
         data-map-pan-ignore="true"
         onPointerDownCapture={handleToolbarPointerDownCapture}
+        ref={toolbarRef}
       >
         <div className="level-tabs" role="group" aria-label={ui.hskLevel}>
           {viewOptions.map((view) => (
@@ -4823,17 +4864,19 @@ function App() {
           <button
             aria-controls="mobile-controls-panel"
             aria-expanded={isMobileControlsOpen}
-            aria-label={ui.menuLabel}
+            aria-label={isMobileControlsOpen ? ui.closeMenuLabel : ui.menuLabel}
             className="mobile-controls-toggle"
             type="button"
-            onClick={() => setIsMobileControlsOpen((isOpen) => !isOpen)}
+            onClick={toggleMobileControls}
           >
             <span className="mobile-controls-icon" aria-hidden="true">
               <span />
               <span />
               <span />
             </span>
-            <span className="mobile-controls-label">{ui.menuLabel}</span>
+            <span className="mobile-controls-label">
+              {isMobileControlsOpen ? ui.closeMenuLabel : ui.menuLabel}
+            </span>
           </button>
         </div>
 

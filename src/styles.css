@@ -2778,6 +2778,21 @@ h1 {
     font-weight: 900;
     text-overflow: ellipsis;
     white-space: nowrap;
+    transition:
+      background-color 180ms ease,
+      box-shadow 180ms ease,
+      color 180ms ease;
+  }
+
+  .toolbar.is-mobile-open {
+    border-color: rgba(37, 99, 235, 0.22);
+    box-shadow: 0 16px 44px rgba(31, 41, 55, 0.18);
+  }
+
+  .toolbar.is-mobile-open .mobile-controls-toggle {
+    color: #991b1b;
+    background: #fee2e2;
+    box-shadow: inset 0 0 0 1px rgba(185, 28, 28, 0.12);
   }
 
   .mobile-controls-icon {
@@ -2795,6 +2810,11 @@ h1 {
     height: 2px;
     border-radius: 999px;
     background: currentColor;
+    transform-origin: center;
+    transition:
+      opacity 160ms ease,
+      top 160ms ease,
+      transform 160ms ease;
   }
 
   .mobile-controls-icon span::after {
@@ -2806,6 +2826,7 @@ h1 {
     background: currentColor;
     content: "";
     transform: translateY(-50%);
+    transition: opacity 120ms ease;
   }
 
   .mobile-controls-icon span:nth-child(1) {
@@ -2832,6 +2853,24 @@ h1 {
     left: 6px;
   }
 
+  .toolbar.is-mobile-open .mobile-controls-icon span::after {
+    opacity: 0;
+  }
+
+  .toolbar.is-mobile-open .mobile-controls-icon span:nth-child(1) {
+    top: 6px;
+    transform: rotate(45deg);
+  }
+
+  .toolbar.is-mobile-open .mobile-controls-icon span:nth-child(2) {
+    opacity: 0;
+  }
+
+  .toolbar.is-mobile-open .mobile-controls-icon span:nth-child(3) {
+    top: 6px;
+    transform: rotate(-45deg);
+  }
+
   .mobile-control-panel {
     display: none;
     grid-column: 1;
@@ -2841,6 +2880,7 @@ h1 {
 
   .toolbar.is-mobile-open .mobile-control-panel {
     display: grid;
+    padding-top: 2px;
   }
 
   .search-field {
