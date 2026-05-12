@@ -21,6 +21,12 @@ export interface ExampleSentence {
   meaning: string;
 }
 
+export interface WordSense {
+  meaning: string;
+  note?: string;
+  examples?: ExampleSentence[];
+}
+
 export interface HskWord {
   id: string;
   level?: HskLevel;
@@ -30,6 +36,7 @@ export interface HskWord {
   cluster: ClusterId;
   exampleSentence?: ExampleSentence;
   examples?: string[];
+  senses?: WordSense[];
 }
 
 export interface ClusterMeta {

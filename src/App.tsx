@@ -506,13 +506,36 @@ function getSentenceMeaning(
   return word.exampleSentence.meaning;
 }
 
+function getSenseSearchText(word: HskWord) {
+  return (
+    word.senses
+      ?.map((sense) =>
+        [
+          sense.meaning,
+          sense.note,
+          ...(sense.examples ?? []).flatMap((example) => [
+            example.hanzi,
+            example.pinyin,
+            example.meaning,
+          ]),
+        ]
+          .filter(Boolean)
+          .join(' '),
+      )
+      .join(' ') ?? ''
+  );
+}
+
 function getSearchableMeaning(
   word: HskWord,
   language: TranslationLanguage,
   localizedMeanings?: LoadedLocalizedMeanings,
 ) {
   const localizedMeaning = getWordMeaning(word, language, localizedMeanings);
-  return localizedMeaning === word.meaning ? word.meaning : `${word.meaning} ${localizedMeaning}`;
+  const senseSearchText = getSenseSearchText(word);
+  const meaningText = localizedMeaning === word.meaning ? word.meaning : `${word.meaning} ${localizedMeaning}`;
+
+  return senseSearchText ? `${meaningText} ${senseSearchText}` : meaningText;
 }
 
 function isWordVisible(
@@ -2029,6 +2052,7 @@ function DetailModal({
   word,
   wordMeaning,
   sentenceMeaning,
+  showSenseDetails,
   promptMode,
   ui,
   status,
@@ -2051,6 +2075,7 @@ function DetailModal({
   word: HskWord;
   wordMeaning: string;
   sentenceMeaning: string;
+  showSenseDetails: boolean;
   promptMode: FlashcardPromptMode;
   ui: UiCopy;
   status?: WordStatus;
@@ -2072,6 +2097,9 @@ function DetailModal({
 }) {
   const [isAnswerVisible, setIsAnswerVisible] = useState(false);
   const [isSentenceExpanded, setIsSentenceExpanded] = useState(false);
+  const [expandedSenseExampleIndexes, setExpandedSenseExampleIndexes] = useState<Set<number>>(
+    () => new Set(),
+  );
   const modalScrollRef = useRef<HTMLDivElement | null>(null);
   const sentenceCardRef = useRef<HTMLDivElement | null>(null);
   const hanziCharacterCount = getModalHanziCharacterCount(word.hanzi);
@@ -2087,10 +2115,21 @@ function DetailModal({
   ]
     .filter(Boolean)
     .join(' ');
+  const senseDetails = showSenseDetails ? word.senses ?? [] : [];
+  const senseExampleGroups = senseDetails
+    .map((sense, index) => ({
+      index,
+      sense,
+      examples: sense.examples ?? [],
+    }))
+    .filter((group) => group.examples.length > 0);
+  const hasSenseExampleGroups = senseExampleGroups.length > 0;
+  const sentenceToggleLabel = isSentenceExpanded ? ui.hidePinyin : ui.showPinyin;
 
   useEffect(() => {
     setIsAnswerVisible(false);
     setIsSentenceExpanded(false);
+    setExpandedSenseExampleIndexes(new Set());
   }, [promptMode, word.id]);
 
   useEffect(() => {
@@ -2166,6 +2205,27 @@ function DetailModal({
       return nextExpanded;
     });
   }, [isRecallContentLocked, onSentenceExpanded, word]);
+  const toggleSenseExampleDetail = useCallback(
+    (senseIndex: number) => {
+      if (isRecallContentLocked) {
+        return;
+      }
+
+      setExpandedSenseExampleIndexes((expandedIndexes) => {
+        const nextExpandedIndexes = new Set(expandedIndexes);
+
+        if (nextExpandedIndexes.has(senseIndex)) {
+          nextExpandedIndexes.delete(senseIndex);
+        } else {
+          nextExpandedIndexes.add(senseIndex);
+          onSentenceExpanded(word);
+        }
+
+        return nextExpandedIndexes;
+      });
+    },
+    [isRecallContentLocked, onSentenceExpanded, word],
+  );
   const handleSentenceCardKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
       if (event.key !== 'Enter' && event.key !== ' ') {
@@ -2176,6 +2236,17 @@ function DetailModal({
       toggleSentenceDetail();
     },
     [toggleSentenceDetail],
+  );
+  const handleSenseExampleCardKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>, senseIndex: number) => {
+      if (event.key !== 'Enter' && event.key !== ' ') {
+        return;
+      }
+
+      event.preventDefault();
+      toggleSenseExampleDetail(senseIndex);
+    },
+    [toggleSenseExampleDetail],
   );
 
   return (
@@ -2271,7 +2342,63 @@ function DetailModal({
             </div>
           ) : null}
 
-          {word.exampleSentence ? (
+          {hasSenseExampleGroups ? (
+            <div className="sentence-card-list">
+              {senseExampleGroups.map((group) => {
+                const isSenseExpanded = expandedSenseExampleIndexes.has(group.index);
+                const previewExample = group.examples[0];
+                const detailId = `sentence-detail-${word.id}-${group.index}`;
+
+                return (
+                  <div
+                    className={isRecallContentLocked ? 'recall-locked-content is-locked' : 'recall-locked-content'}
+                    key={`${group.sense.meaning}-${group.index}`}
+                  >
+                    <div
+                      aria-controls={detailId}
+                      aria-disabled={isRecallContentLocked}
+                      aria-expanded={isSenseExpanded}
+                      className={isRecallContentLocked ? 'sentence-card is-disabled' : 'sentence-card'}
+                      onClick={() => toggleSenseExampleDetail(group.index)}
+                      onKeyDown={(event) => handleSenseExampleCardKeyDown(event, group.index)}
+                      role="button"
+                      tabIndex={isRecallContentLocked ? -1 : 0}
+                    >
+                      <div className="sentence-card-header">
+                        <div className="sentence-card-title-stack">
+                          <p className="sentence-kicker">Meaning {group.index + 1}</p>
+                        </div>
+                        <span className="sentence-toggle" aria-hidden="true">
+                          {isSenseExpanded ? ui.hidePinyin : ui.showPinyin}
+                        </span>
+                      </div>
+                      <p className="sentence-hanzi">{previewExample.hanzi}</p>
+                      {isSenseExpanded ? (
+                        <div className="sentence-detail" id={detailId}>
+                          {group.sense.note ? <p className="sentence-sense-note">{group.sense.note}</p> : null}
+                          {group.examples.map((example, exampleIndex) => (
+                            <div
+                              className="sentence-sense-example"
+                              key={`${group.sense.meaning}-${example.hanzi}`}
+                            >
+                              {exampleIndex > 0 ? <p className="sentence-hanzi">{example.hanzi}</p> : null}
+                              <p className="sentence-pinyin">{example.pinyin}</p>
+                              <p className="sentence-meaning" dir="auto">{example.meaning}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                    {isRecallContentLocked ? (
+                      <div className="recall-lock-overlay" aria-hidden="true">
+                        {ui.unlockExample}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : word.exampleSentence ? (
             <div className={isRecallContentLocked ? 'recall-locked-content is-locked' : 'recall-locked-content'}>
               <div
                 aria-controls={`sentence-detail-${word.id}`}
@@ -2287,7 +2414,7 @@ function DetailModal({
                 <div className="sentence-card-header">
                   <p className="sentence-kicker">{ui.exampleSentence}</p>
                   <span className="sentence-toggle" aria-hidden="true">
-                    {isSentenceExpanded ? ui.hidePinyin : ui.showPinyin}
+                    {sentenceToggleLabel}
                   </span>
                 </div>
                 <p className="sentence-hanzi">{word.exampleSentence.hanzi}</p>
@@ -5178,6 +5305,7 @@ function App() {
           isAudioLoading={selectedWordAudioFeedback?.loadState === 'loading'}
           isAudioPending={selectedWordAudioFeedback?.isPending ?? false}
           sentenceMeaning={getSentenceMeaning(selectedWord, language, localizedMeanings)}
+          showSenseDetails={language === 'en' && selectedWord.level === 4}
           speechMessage={speechMessage}
           speechSupported={speechSupported}
           status={progress[selectedWord.id]}

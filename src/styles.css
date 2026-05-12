@@ -2260,6 +2260,16 @@ h1 {
     transform 170ms ease;
 }
 
+.sentence-card-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.sentence-card-list .sentence-card {
+  margin-top: 0;
+}
+
 .sentence-card:hover {
   transform: translateY(-1px);
   border-color: rgba(37, 99, 235, 0.24);
@@ -2283,6 +2293,12 @@ h1 {
   justify-content: space-between;
 }
 
+.sentence-card-title-stack {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
 .sentence-kicker {
   margin-bottom: 0;
   color: #64748b;
@@ -2294,6 +2310,7 @@ h1 {
 
 .sentence-toggle {
   display: inline-grid;
+  flex: 0 0 auto;
   place-items: center;
   min-height: 32px;
   padding: 0 12px;
@@ -2319,6 +2336,29 @@ h1 {
   padding-top: 10px;
   border-top: 1px solid rgba(148, 163, 184, 0.22);
   animation: answer-in 160ms ease both;
+}
+
+.sentence-sense-note {
+  margin-bottom: 0;
+  color: #475569;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.sentence-sense-example {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.sentence-sense-example + .sentence-sense-example {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.sentence-sense-example:not(:first-child) .sentence-hanzi {
+  font-size: clamp(1.45rem, 2.6vw, 2.2rem);
 }
 
 .sentence-pinyin,
