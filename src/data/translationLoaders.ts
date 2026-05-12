@@ -1,4 +1,5 @@
 import type { HskLevel } from '../types';
+import { HSK5_LOCALIZED_WORD_MEANING_OVERRIDES } from './hsk5LocalizedMeaningOverrides';
 
 export type TranslationLanguage =
   | 'en'
@@ -36,6 +37,23 @@ function bundle<T extends Record<string, unknown>>(
     return {
       words: module[wordExport] as Record<string, string>,
       sentences: module[sentenceExport] as Record<string, string>,
+    };
+  };
+}
+
+function withWordMeaningOverrides(
+  loader: TranslationLoader,
+  wordOverrides: Record<string, string>,
+): TranslationLoader {
+  return async () => {
+    const localizedMeanings = await loader();
+
+    return {
+      ...localizedMeanings,
+      words: {
+        ...localizedMeanings.words,
+        ...wordOverrides,
+      },
     };
   };
 }
@@ -250,55 +268,85 @@ const TRANSLATION_LOADERS: Partial<Record<HskLevel, Partial<Record<LocalizedLang
     ),
   },
   5: {
-    ar: bundle(
-      () => import('./hsk5ArabicTranslations'),
-      'HSK5_AR_WORD_MEANINGS',
-      'HSK5_AR_SENTENCE_MEANINGS',
+    ar: withWordMeaningOverrides(
+      bundle(
+        () => import('./hsk5ArabicTranslations'),
+        'HSK5_AR_WORD_MEANINGS',
+        'HSK5_AR_SENTENCE_MEANINGS',
+      ),
+      HSK5_LOCALIZED_WORD_MEANING_OVERRIDES.ar,
     ),
-    de: bundle(
-      () => import('./hsk5GermanTranslations'),
-      'HSK5_DE_WORD_MEANINGS',
-      'HSK5_DE_SENTENCE_MEANINGS',
+    de: withWordMeaningOverrides(
+      bundle(
+        () => import('./hsk5GermanTranslations'),
+        'HSK5_DE_WORD_MEANINGS',
+        'HSK5_DE_SENTENCE_MEANINGS',
+      ),
+      HSK5_LOCALIZED_WORD_MEANING_OVERRIDES.de,
     ),
-    es: bundle(
-      () => import('./hsk5SpanishTranslations'),
-      'HSK5_ES_WORD_MEANINGS',
-      'HSK5_ES_SENTENCE_MEANINGS',
+    es: withWordMeaningOverrides(
+      bundle(
+        () => import('./hsk5SpanishTranslations'),
+        'HSK5_ES_WORD_MEANINGS',
+        'HSK5_ES_SENTENCE_MEANINGS',
+      ),
+      HSK5_LOCALIZED_WORD_MEANING_OVERRIDES.es,
     ),
-    fr: bundle(
-      () => import('./hsk5FrenchTranslations'),
-      'HSK5_FR_WORD_MEANINGS',
-      'HSK5_FR_SENTENCE_MEANINGS',
+    fr: withWordMeaningOverrides(
+      bundle(
+        () => import('./hsk5FrenchTranslations'),
+        'HSK5_FR_WORD_MEANINGS',
+        'HSK5_FR_SENTENCE_MEANINGS',
+      ),
+      HSK5_LOCALIZED_WORD_MEANING_OVERRIDES.fr,
     ),
-    id: bundle(
-      () => import('./hsk5IndonesianTranslations'),
-      'HSK5_ID_WORD_MEANINGS',
-      'HSK5_ID_SENTENCE_MEANINGS',
+    id: withWordMeaningOverrides(
+      bundle(
+        () => import('./hsk5IndonesianTranslations'),
+        'HSK5_ID_WORD_MEANINGS',
+        'HSK5_ID_SENTENCE_MEANINGS',
+      ),
+      HSK5_LOCALIZED_WORD_MEANING_OVERRIDES.id,
     ),
-    ja: bundle(
-      () => import('./hsk5JapaneseTranslations'),
-      'HSK5_JA_WORD_MEANINGS',
-      'HSK5_JA_SENTENCE_MEANINGS',
+    ja: withWordMeaningOverrides(
+      bundle(
+        () => import('./hsk5JapaneseTranslations'),
+        'HSK5_JA_WORD_MEANINGS',
+        'HSK5_JA_SENTENCE_MEANINGS',
+      ),
+      HSK5_LOCALIZED_WORD_MEANING_OVERRIDES.ja,
     ),
-    ko: bundle(
-      () => import('./hsk5KoreanTranslations'),
-      'HSK5_KO_WORD_MEANINGS',
-      'HSK5_KO_SENTENCE_MEANINGS',
+    ko: withWordMeaningOverrides(
+      bundle(
+        () => import('./hsk5KoreanTranslations'),
+        'HSK5_KO_WORD_MEANINGS',
+        'HSK5_KO_SENTENCE_MEANINGS',
+      ),
+      HSK5_LOCALIZED_WORD_MEANING_OVERRIDES.ko,
     ),
-    'pt-BR': bundle(
-      () => import('./hsk5PortugueseTranslations'),
-      'HSK5_PT_BR_WORD_MEANINGS',
-      'HSK5_PT_BR_SENTENCE_MEANINGS',
+    'pt-BR': withWordMeaningOverrides(
+      bundle(
+        () => import('./hsk5PortugueseTranslations'),
+        'HSK5_PT_BR_WORD_MEANINGS',
+        'HSK5_PT_BR_SENTENCE_MEANINGS',
+      ),
+      HSK5_LOCALIZED_WORD_MEANING_OVERRIDES['pt-BR'],
     ),
-    ru: bundle(
-      () => import('./hsk5RussianTranslations'),
-      'HSK5_RU_WORD_MEANINGS',
-      'HSK5_RU_SENTENCE_MEANINGS',
+    ru: withWordMeaningOverrides(
+      bundle(
+        () => import('./hsk5RussianTranslations'),
+        'HSK5_RU_WORD_MEANINGS',
+        'HSK5_RU_SENTENCE_MEANINGS',
+      ),
+      HSK5_LOCALIZED_WORD_MEANING_OVERRIDES.ru,
     ),
-    vi: bundle(
-      () => import('./hsk5VietnameseTranslations'),
-      'HSK5_VI_WORD_MEANINGS',
-      'HSK5_VI_SENTENCE_MEANINGS',
+    vi: withWordMeaningOverrides(
+      bundle(
+        () => import('./hsk5VietnameseTranslations'),
+        'HSK5_VI_WORD_MEANINGS',
+        'HSK5_VI_SENTENCE_MEANINGS',
+      ),
+      HSK5_LOCALIZED_WORD_MEANING_OVERRIDES.vi,
     ),
   },
   6: {

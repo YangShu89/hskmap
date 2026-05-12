@@ -5305,7 +5305,7 @@ function App() {
           isAudioLoading={selectedWordAudioFeedback?.loadState === 'loading'}
           isAudioPending={selectedWordAudioFeedback?.isPending ?? false}
           sentenceMeaning={getSentenceMeaning(selectedWord, language, localizedMeanings)}
-          showSenseDetails={language === 'en' && selectedWord.level === 4}
+          showSenseDetails={language === 'en' && (selectedWord.level === 4 || selectedWord.level === 5)}
           speechMessage={speechMessage}
           speechSupported={speechSupported}
           status={progress[selectedWord.id]}
