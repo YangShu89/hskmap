@@ -513,7 +513,7 @@ function getLocalizedWordSenses(
   localizedMeanings?: LoadedLocalizedMeanings,
 ): WordSense[] {
   const level = word.level;
-  const shouldShowSenseDetails = level === 6 || (language === 'en' && (level === 4 || level === 5));
+  const shouldShowSenseDetails = level === 4 || level === 6 || (language === 'en' && level === 5);
 
   if (!level || !shouldShowSenseDetails || !word.senses?.length) {
     return [];
