@@ -42,6 +42,7 @@ import type {
   HskLevel,
   HskWord,
   ProgressMap,
+  WordSense,
   WordStatus,
 } from './types';
 import { getUiCopy, type UiCopy } from './uiCopy';
@@ -504,6 +505,45 @@ function getSentenceMeaning(
   }
 
   return word.exampleSentence.meaning;
+}
+
+function getLocalizedWordSenses(
+  word: HskWord,
+  language: TranslationLanguage,
+  localizedMeanings?: LoadedLocalizedMeanings,
+): WordSense[] {
+  const level = word.level;
+  const shouldShowSenseDetails = level === 6 || (language === 'en' && (level === 4 || level === 5));
+
+  if (!level || !shouldShowSenseDetails || !word.senses?.length) {
+    return [];
+  }
+
+  if (language === 'en') {
+    return word.senses;
+  }
+
+  const localizedSenses = localizedMeanings?.[level]?.[language]?.senses?.[word.id];
+  if (!localizedSenses) {
+    return word.senses;
+  }
+
+  return word.senses.map((sense, senseIndex) => {
+    const localizedSense = localizedSenses[senseIndex];
+    if (!localizedSense) {
+      return sense;
+    }
+
+    return {
+      ...sense,
+      meaning: localizedSense.meaning,
+      note: localizedSense.note ?? sense.note,
+      examples: sense.examples?.map((example, exampleIndex) => ({
+        ...example,
+        meaning: localizedSense.examples?.[exampleIndex] ?? example.meaning,
+      })),
+    };
+  });
 }
 
 function getSenseSearchText(word: HskWord) {
@@ -2052,7 +2092,7 @@ function DetailModal({
   word,
   wordMeaning,
   sentenceMeaning,
-  showSenseDetails,
+  senseDetails,
   promptMode,
   ui,
   status,
@@ -2075,7 +2115,7 @@ function DetailModal({
   word: HskWord;
   wordMeaning: string;
   sentenceMeaning: string;
-  showSenseDetails: boolean;
+  senseDetails: WordSense[];
   promptMode: FlashcardPromptMode;
   ui: UiCopy;
   status?: WordStatus;
@@ -2115,7 +2155,6 @@ function DetailModal({
   ]
     .filter(Boolean)
     .join(' ');
-  const senseDetails = showSenseDetails ? word.senses ?? [] : [];
   const senseExampleGroups = senseDetails
     .map((sense, index) => ({
       index,
@@ -2375,6 +2414,7 @@ function DetailModal({
                       <p className="sentence-hanzi">{previewExample.hanzi}</p>
                       {isSenseExpanded ? (
                         <div className="sentence-detail" id={detailId}>
+                          <p className="sentence-sense-meaning" dir="auto">{group.sense.meaning}</p>
                           {group.sense.note ? <p className="sentence-sense-note">{group.sense.note}</p> : null}
                           {group.examples.map((example, exampleIndex) => (
                             <div
@@ -5305,7 +5345,7 @@ function App() {
           isAudioLoading={selectedWordAudioFeedback?.loadState === 'loading'}
           isAudioPending={selectedWordAudioFeedback?.isPending ?? false}
           sentenceMeaning={getSentenceMeaning(selectedWord, language, localizedMeanings)}
-          showSenseDetails={language === 'en' && (selectedWord.level === 4 || selectedWord.level === 5)}
+          senseDetails={getLocalizedWordSenses(selectedWord, language, localizedMeanings)}
           speechMessage={speechMessage}
           speechSupported={speechSupported}
           status={progress[selectedWord.id]}

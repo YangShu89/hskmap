@@ -2338,6 +2338,13 @@ h1 {
   animation: answer-in 160ms ease both;
 }
 
+.sentence-sense-meaning {
+  margin-bottom: 0;
+  color: #0f172a;
+  font-size: 1rem;
+  font-weight: 950;
+}
+
 .sentence-sense-note {
   margin-bottom: 0;
   color: #475569;
