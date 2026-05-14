@@ -12,6 +12,11 @@ import type {
   Hsk3Level1ClassicReusePayload,
 } from './data/hsk3/level1Reuse';
 import {
+  HSK3_LEVEL1_READINGS,
+  type Hsk3Level1Reading,
+  type Hsk3Level1ReadingType,
+} from './data/hsk3/level1Readings';
+import {
   getAvailableLocalizedLevels,
   loadLocalizedMeanings,
   type LocalizedLanguage,
@@ -185,6 +190,7 @@ const ALL_WORD_COUNT = HSK_LEVELS.reduce(
   0,
 );
 const HSK3_INTERNAL_PREVIEW_PATH = '/internal/hsk3';
+const HSK3_READING_MAP_PATH = '/internal/hsk3/readings';
 const HSK3_PREVIEW_MAX_ROWS = 300;
 const HSK3_PREVIEW_UI = getUiCopy('en');
 const EMPTY_LOCALIZED_MEANINGS: LoadedLocalizedMeanings = {};
@@ -386,6 +392,10 @@ function isInternalHsk3PreviewPath(pathname: string) {
   return pathname === HSK3_INTERNAL_PREVIEW_PATH || pathname === `${HSK3_INTERNAL_PREVIEW_PATH}/`;
 }
 
+function isHsk3ReadingMapPath(pathname: string) {
+  return pathname === HSK3_READING_MAP_PATH || pathname === `${HSK3_READING_MAP_PATH}/`;
+}
+
 function setRobotsMetaContent(content: string | null) {
   if (typeof document === 'undefined') {
     return () => {};
@@ -464,6 +474,14 @@ function getInitialIsInternalHsk3Preview() {
   }
 
   return isInternalHsk3PreviewPath(window.location.pathname);
+}
+
+function getInitialIsHsk3ReadingMap() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  return isHsk3ReadingMapPath(window.location.pathname);
 }
 
 function isIgnoredMapPanTarget(target: EventTarget | null) {
@@ -3653,6 +3671,9 @@ function Hsk3InternalPreview({
             {' '}
             while HSK 3.0 rollout work is still in progress.
           </p>
+          <a className="hsk3-reading-link" href={HSK3_READING_MAP_PATH}>
+            Open Level 1 reading map
+          </a>
         </div>
 
         <div className="progress-card" aria-label="HSK 3.0 rollout summary">
@@ -4004,12 +4025,192 @@ function Hsk3InternalPreview({
   );
 }
 
+const HSK3_READING_TYPE_LABELS: Record<Hsk3Level1ReadingType, string> = {
+  challenge: 'Challenge',
+  dialogue: 'Dialogue',
+  message_notice: 'Notice',
+  review: 'Review',
+  short_story: 'Story',
+};
+
+const HSK3_READING_TYPE_CLASSNAMES: Record<Hsk3Level1ReadingType, string> = {
+  challenge: 'is-challenge',
+  dialogue: 'is-dialogue',
+  message_notice: 'is-message',
+  review: 'is-review',
+  short_story: 'is-story',
+};
+
+function getReadingCharacterCount(reading: Hsk3Level1Reading) {
+  return (reading.hanzi.match(/\p{Script=Han}/gu) ?? []).length;
+}
+
+function Hsk3ReadingMap() {
+  const [selectedReading, setSelectedReading] = useState<Hsk3Level1Reading | null>(null);
+  const readingsByUnit = useMemo(() => {
+    const units = new Map<number, {
+      title: string;
+      readings: Hsk3Level1Reading[];
+    }>();
+
+    for (const reading of HSK3_LEVEL1_READINGS) {
+      const unit = units.get(reading.unit) ?? {
+        title: reading.unitTitle,
+        readings: [],
+      };
+      unit.readings.push(reading);
+      units.set(reading.unit, unit);
+    }
+
+    return [...units.entries()].map(([unit, details]) => ({
+      unit,
+      title: details.title,
+      readings: details.readings.sort((a, b) => a.number - b.number),
+    }));
+  }, []);
+  const typeCounts = useMemo(
+    () =>
+      HSK3_LEVEL1_READINGS.reduce(
+        (counts, reading) => {
+          counts[reading.type] += 1;
+          return counts;
+        },
+        {
+          challenge: 0,
+          dialogue: 0,
+          message_notice: 0,
+          review: 0,
+          short_story: 0,
+        } satisfies Record<Hsk3Level1ReadingType, number>,
+      ),
+    [],
+  );
+  const selectedReadingCharacterCount = selectedReading ? getReadingCharacterCount(selectedReading) : 0;
+
+  return (
+    <main className="app-shell hsk3-reading-shell" lang="en" dir="ltr">
+      <header className="hero hsk3-reading-hero">
+        <div>
+          <p className="eyebrow">Internal HSK 3.0 reading map</p>
+          <h1>HSK 3.0 Level 1 Readings</h1>
+          <a className="hsk3-reading-link" href={HSK3_INTERNAL_PREVIEW_PATH}>
+            Back to HSK 3.0 word preview
+          </a>
+        </div>
+        <div className="progress-card hsk3-reading-progress" aria-label="Reading map summary">
+          <div>
+            <span className="progress-number">{HSK3_LEVEL1_READINGS.length}</span>
+            <span className="progress-label">Texts</span>
+          </div>
+          <div>
+            <span className="progress-number">{readingsByUnit.length}</span>
+            <span className="progress-label">Units</span>
+          </div>
+          <div>
+            <span className="progress-number">300</span>
+            <span className="progress-label">Words</span>
+          </div>
+        </div>
+      </header>
+
+      <section className="hsk3-reading-toolbar" aria-label="Reading type totals">
+        {Object.entries(typeCounts).map(([type, count]) => (
+          <span className={`hsk3-reading-chip ${HSK3_READING_TYPE_CLASSNAMES[type as Hsk3Level1ReadingType]}`} key={type}>
+            {HSK3_READING_TYPE_LABELS[type as Hsk3Level1ReadingType]} {count}
+          </span>
+        ))}
+      </section>
+
+      <section className="hsk3-reading-map" aria-label="HSK 3.0 Level 1 reading units">
+        {readingsByUnit.map((unit) => (
+          <article className="hsk3-reading-unit" key={unit.unit}>
+            <header className="hsk3-reading-unit-head">
+              <div>
+                <span>Unit {unit.unit}</span>
+                <h2>{unit.title}</h2>
+              </div>
+              <strong>{unit.readings.length} texts</strong>
+            </header>
+            <div className="hsk3-reading-grid">
+              {unit.readings.map((reading) => (
+                <button
+                  className={`hsk3-reading-tile ${HSK3_READING_TYPE_CLASSNAMES[reading.type]}`}
+                  key={reading.id}
+                  type="button"
+                  onClick={() => setSelectedReading(reading)}
+                >
+                  <span className="hsk3-reading-number">{String(reading.number).padStart(2, '0')}</span>
+                  <span className="hsk3-reading-title">{reading.title}</span>
+                  <span className="hsk3-reading-meta">
+                    {HSK3_READING_TYPE_LABELS[reading.type]} · {reading.targetWords.length} words
+                  </span>
+                </button>
+              ))}
+            </div>
+          </article>
+        ))}
+      </section>
+
+      {selectedReading ? (
+        <div
+          className="modal-backdrop hsk3-reading-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setSelectedReading(null);
+            }
+          }}
+        >
+          <article
+            aria-labelledby="hsk3-reading-detail-title"
+            className="hsk3-reading-detail"
+            role="dialog"
+            aria-modal="true"
+          >
+            <button
+              className="modal-close"
+              type="button"
+              aria-label="Close reading"
+              onClick={() => setSelectedReading(null)}
+            >
+              ×
+            </button>
+            <div className="hsk3-reading-detail-head">
+              <span>{String(selectedReading.number).padStart(2, '0')}</span>
+              <div>
+                <p>{HSK3_READING_TYPE_LABELS[selectedReading.type]} · Unit {selectedReading.unit}</p>
+                <h2 id="hsk3-reading-detail-title">{selectedReading.title}</h2>
+              </div>
+            </div>
+            <div className="hsk3-reading-detail-stats">
+              <span>{selectedReadingCharacterCount} characters</span>
+              <span>{selectedReading.targetWords.length} target words</span>
+              <span>{selectedReading.unitTitle}</span>
+            </div>
+            <div className="hsk3-reading-text">
+              {selectedReading.hanzi.split('\n').map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+            </div>
+            <div className="hsk3-reading-targets" aria-label="Target words">
+              {selectedReading.targetWords.map((word) => (
+                <span key={word}>{word}</span>
+              ))}
+            </div>
+          </article>
+        </div>
+      ) : null}
+    </main>
+  );
+}
+
 function App() {
   useLayoutEffect(() => {
     document.documentElement.classList.remove('app-loading');
   }, []);
 
   const [isInternalHsk3Preview, setIsInternalHsk3Preview] = useState(getInitialIsInternalHsk3Preview);
+  const [isHsk3ReadingMap, setIsHsk3ReadingMap] = useState(getInitialIsHsk3ReadingMap);
   const [hsk3PreviewView, setHsk3PreviewView] = useState<Hsk3PreviewView>('all');
   const [hsk3PreviewSearch, setHsk3PreviewSearch] = useState('');
   const [hsk3PreviewData, setHsk3PreviewData] = useState<Hsk3PreviewData | null>(null);
@@ -4090,6 +4291,7 @@ function App() {
     }
 
     setIsInternalHsk3Preview(false);
+    setIsHsk3ReadingMap(false);
     setLanguage(nextLanguage);
     setSelectedView(nextView);
     setSelectedWord(null);
@@ -4200,6 +4402,7 @@ function App() {
   useEffect(() => {
     const handlePopState = () => {
       setIsInternalHsk3Preview(isInternalHsk3PreviewPath(window.location.pathname));
+      setIsHsk3ReadingMap(isHsk3ReadingMapPath(window.location.pathname));
       const nextRoute = getAppRouteFromPath(window.location.pathname);
       setLanguage(nextRoute.language);
       setSelectedView(nextRoute.view);
@@ -4240,7 +4443,7 @@ function App() {
   }, [closeMobileControls, isMobileControlsOpen]);
 
   useEffect(() => {
-    if (isInternalHsk3Preview || typeof window === 'undefined') {
+    if (isInternalHsk3Preview || isHsk3ReadingMap || typeof window === 'undefined') {
       return;
     }
 
@@ -4251,7 +4454,7 @@ function App() {
 
     lastTrackedPageRef.current = pageKey;
     captureAnalyticsPageView(getRouteAnalyticsProperties(language, selectedView));
-  }, [isInternalHsk3Preview, language, selectedView]);
+  }, [isHsk3ReadingMap, isInternalHsk3Preview, language, selectedView]);
 
   useEffect(() => {
     if (!isInternalHsk3Preview) {
@@ -4304,24 +4507,26 @@ function App() {
   }, [isInternalHsk3Preview]);
 
   useEffect(() => {
-    if (!isInternalHsk3Preview) {
+    if (!isInternalHsk3Preview && !isHsk3ReadingMap) {
       return;
     }
 
     const previousTitle = document.title;
-    document.title = 'HSK 3.0 Internal Preview | HSKMAP';
+    document.title = isHsk3ReadingMap
+      ? 'HSK 3.0 Level 1 Reading Map | HSKMAP'
+      : 'HSK 3.0 Internal Preview | HSKMAP';
     return () => {
       document.title = previousTitle;
     };
-  }, [isInternalHsk3Preview]);
+  }, [isHsk3ReadingMap, isInternalHsk3Preview]);
 
   useEffect(() => {
-    if (!isInternalHsk3Preview) {
+    if (!isInternalHsk3Preview && !isHsk3ReadingMap) {
       return;
     }
 
     return setRobotsMetaContent('noindex, nofollow, noarchive');
-  }, [isInternalHsk3Preview]);
+  }, [isHsk3ReadingMap, isInternalHsk3Preview]);
 
   useEffect(() => {
     if (language === 'en' || !translationLevelsToLoad.length) {
@@ -4457,7 +4662,7 @@ function App() {
   useEffect(() => {
     window.clearTimeout(searchTrackingTimerRef.current);
     const normalizedSearchLength = search.trim().length;
-    if (isInternalHsk3Preview || normalizedSearchLength === 0) {
+    if (isInternalHsk3Preview || isHsk3ReadingMap || normalizedSearchLength === 0) {
       return;
     }
 
@@ -4470,7 +4675,7 @@ function App() {
     }, 700);
 
     return () => window.clearTimeout(searchTrackingTimerRef.current);
-  }, [isInternalHsk3Preview, language, search, selectedView, visibleCount]);
+  }, [isHsk3ReadingMap, isInternalHsk3Preview, language, search, selectedView, visibleCount]);
 
   const constrainMapCamera = useCallback((camera: MapCamera) => {
     const viewport = posterViewportRef.current;
@@ -4964,6 +5169,10 @@ function App() {
         view={hsk3PreviewView}
       />
     );
+  }
+
+  if (isHsk3ReadingMap) {
+    return <Hsk3ReadingMap />;
   }
 
   return (

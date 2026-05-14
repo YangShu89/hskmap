@@ -20,6 +20,11 @@ export {
   HSK3_OFFICIAL_TOTAL_WORD_COUNT,
 } from './metadata';
 export { HSK3_SOURCE_MANIFEST } from './sourceManifest';
+export {
+  HSK3_LEVEL1_READINGS,
+  type Hsk3Level1Reading,
+  type Hsk3Level1ReadingType,
+} from './level1Readings';
 
 export const HSK3_OFFICIAL_VOCABULARY =
   officialVocabulary as Hsk3OfficialVocabularyPayload<Hsk3OfficialVocabularyEntry>;
