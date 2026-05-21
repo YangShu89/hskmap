@@ -54,9 +54,13 @@ async function loadSeoData() {
 async function getTemplateAssets() {
   const template = await fs.readFile(path.join(distDir, 'index.html'), 'utf8');
   const tags = template.match(/<script\b[^>]*><\/script>|<link\b[^>]*rel="stylesheet"[^>]*>/g) ?? [];
+  const adsense = tags.find((tag) => tag.includes('pagead2.googlesyndication.com/pagead/js/adsbygoogle.js')) ?? '';
+  const appTags = tags.filter((tag) => tag !== adsense);
+
   return {
-    app: tags.join('\n    '),
-    css: tags.filter((tag) => tag.startsWith('<link')).join('\n    '),
+    adsense,
+    app: appTags.join('\n    '),
+    css: appTags.filter((tag) => tag.startsWith('<link')).join('\n    '),
   };
 }
 
@@ -158,7 +162,7 @@ ${alternates
     <meta name="twitter:title" content="${escapeHtml(title)}" />
     <meta name="twitter:description" content="${escapeHtml(description)}" />
     <script type="application/ld+json">${escapeScriptJson(jsonLd)}</script>
-${appBootStyles}
+${assets.adsense ? `    ${assets.adsense}\n` : ''}${appBootStyles}
 ${headScript}
     ${includeApp ? assets.app : assets.css}`;
 }
