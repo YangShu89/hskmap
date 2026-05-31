@@ -596,6 +596,71 @@ h1 {
   line-height: 1.5;
 }
 
+.content-shell {
+  width: min(940px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 42px 0 60px;
+}
+
+.content-hero {
+  padding: 10px 0 28px;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.2);
+}
+
+.content-hero h1 {
+  max-width: 880px;
+  margin-bottom: 16px;
+  font-size: clamp(2.35rem, 6vw, 4.8rem);
+}
+
+.content-hero p {
+  max-width: 760px;
+  color: #475569;
+  font-size: 1.05rem;
+  font-weight: 650;
+  line-height: 1.7;
+}
+
+.content-page {
+  display: grid;
+  gap: 0;
+  margin-top: 8px;
+}
+
+.content-section {
+  padding: 24px 0;
+  border-bottom: 1px solid rgba(100, 116, 139, 0.16);
+}
+
+.content-section h2 {
+  max-width: 760px;
+  margin: 0 0 10px;
+  color: #111827;
+  font-size: 1.45rem;
+  line-height: 1.22;
+}
+
+.content-section p,
+.content-section li {
+  max-width: 780px;
+  color: #475569;
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.75;
+}
+
+.content-section p:last-child,
+.content-section ul:last-child {
+  margin-bottom: 0;
+}
+
+.content-section ul {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding-left: 22px;
+}
+
 .hsk-guide {
   max-width: 1120px;
   margin: 30px auto 0;
@@ -726,6 +791,30 @@ h1 {
   font-size: 0.82rem;
   font-weight: 650;
   line-height: 1.5;
+}
+
+.content-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+  max-width: 1120px;
+  margin: 12px auto 0;
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.content-footer a {
+  text-decoration: underline;
+  text-decoration-color: rgba(71, 85, 105, 0.34);
+  text-underline-offset: 3px;
+}
+
+.content-footer a:hover {
+  color: #1d4ed8;
+  text-decoration-color: currentColor;
 }
 
 .progress-card {

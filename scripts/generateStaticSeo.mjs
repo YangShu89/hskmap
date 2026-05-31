@@ -9,6 +9,16 @@ const distDir = path.join(projectRoot, 'dist');
 const seoDataOutDir = path.join(projectRoot, 'node_modules', '.tmp', 'seo-data');
 const seoDataEntry = path.join(projectRoot, 'scripts', 'seoDataEntry.ts');
 const generatedEntryName = 'seoDataEntry.mjs';
+const contentPageExportNames = [
+  'contentPages',
+  'CONTENT_PAGES',
+  'seoContentPages',
+  'SEO_CONTENT_PAGES',
+  'staticContentPages',
+  'STATIC_CONTENT_PAGES',
+  'contentPageRegistry',
+  'CONTENT_PAGE_REGISTRY',
+];
 
 function escapeHtml(value) {
   return String(value)
@@ -93,6 +103,239 @@ function getAlternates({ level, data }) {
   return alternates;
 }
 
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function getStringField(value, fieldNames) {
+  for (const fieldName of fieldNames) {
+    const fieldValue = value?.[fieldName];
+    if (typeof fieldValue === 'string' && fieldValue.trim()) {
+      return fieldValue.trim();
+    }
+  }
+
+  return null;
+}
+
+function normalizePagePathname(value, data, label) {
+  let pathname = String(value ?? '').trim();
+  if (!pathname) {
+    throw new Error(`${label}: missing slug/path`);
+  }
+
+  if (/^https?:\/\//i.test(pathname)) {
+    const url = new URL(pathname);
+    const siteUrl = new URL(data.HSKMAP_SITE_URL);
+    if (url.origin !== siteUrl.origin) {
+      throw new Error(`${label}: content page URL must be on ${siteUrl.origin}`);
+    }
+    pathname = url.pathname;
+  }
+
+  if (!pathname.startsWith('/')) {
+    pathname = `/${pathname}`;
+  }
+
+  pathname = pathname.replace(/\/{2,}/g, '/');
+  if (!pathname.endsWith('/')) {
+    pathname = `${pathname}/`;
+  }
+
+  if (pathname === '/') {
+    throw new Error(`${label}: content pages cannot overwrite the root page`);
+  }
+
+  return pathname;
+}
+
+function getContentPageRawItems(registry, exportName) {
+  if (Array.isArray(registry)) {
+    return registry;
+  }
+
+  if (isPlainObject(registry)) {
+    for (const fieldName of ['pages', 'items', 'contentPages']) {
+      if (Array.isArray(registry[fieldName])) {
+        return registry[fieldName];
+      }
+    }
+
+    return Object.entries(registry).map(([slug, page]) =>
+      isPlainObject(page) && !page.slug && !page.path && !page.pathname && !page.urlPath && !page.permalink
+        ? { slug, ...page }
+        : page,
+    );
+  }
+
+  throw new Error(`${exportName}: expected an array or object content page registry`);
+}
+
+function findContentPageRegistry(data) {
+  const containers = [data];
+  if (Array.isArray(data.default)) {
+    return { exportName: 'default', registry: data.default };
+  }
+  if (isPlainObject(data.default)) {
+    containers.push(data.default);
+  }
+
+  for (const container of containers) {
+    for (const exportName of contentPageExportNames) {
+      if (container && Object.prototype.hasOwnProperty.call(container, exportName)) {
+        return { exportName, registry: container[exportName] };
+      }
+    }
+  }
+
+  for (const container of containers) {
+    for (const [exportName, registry] of Object.entries(container ?? {})) {
+      if (/content.*pages|pages.*content|content.*registry/i.test(exportName)) {
+        return { exportName, registry };
+      }
+    }
+  }
+
+  return null;
+}
+
+function resolveContentLocale(page, data) {
+  const rawLocale = getStringField(page, ['locale', 'language', 'lang']);
+  const defaultLocale = data.SEO_LOCALES.find((locale) => locale.id === 'en') ?? data.SEO_LOCALES[0];
+  if (!rawLocale) {
+    return defaultLocale;
+  }
+
+  const normalized = rawLocale.toLowerCase();
+  return (
+    data.SEO_LOCALES.find((locale) =>
+      [locale.id, locale.slug, locale.hreflang, locale.htmlLang].some(
+        (localeValue) => String(localeValue).toLowerCase() === normalized,
+      ),
+    ) ?? defaultLocale
+  );
+}
+
+function parseJsonLdString(value, label) {
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    throw new Error(`${label}: jsonLd string must be valid JSON`);
+  }
+}
+
+function getContentJsonLd(page, canonical, locale, data, label) {
+  const providedJsonLd = page.jsonLd ?? page.jsonLD ?? page.structuredData;
+  if (providedJsonLd === false) {
+    return null;
+  }
+
+  if (typeof providedJsonLd === 'string' && providedJsonLd.trim()) {
+    return parseJsonLdString(providedJsonLd, label);
+  }
+
+  if (providedJsonLd !== undefined && providedJsonLd !== null) {
+    if (isPlainObject(providedJsonLd) || Array.isArray(providedJsonLd)) {
+      return providedJsonLd;
+    }
+
+    throw new Error(`${label}: jsonLd must be an object, array, JSON string, or false`);
+  }
+
+  const schemaType = getStringField(page, ['schemaType', 'jsonLdType']) ?? 'WebPage';
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': schemaType,
+    name: page.title,
+    description: page.description,
+    url: canonical,
+    inLanguage: locale.htmlLang,
+    isPartOf: {
+      '@type': 'WebSite',
+      name: data.HSKMAP_NAME,
+      url: data.HSKMAP_SITE_URL,
+    },
+    publisher: {
+      '@type': 'Organization',
+      name: data.HSKMAP_NAME,
+      url: data.HSKMAP_SITE_URL,
+    },
+  };
+
+  if (schemaType === 'Article' || schemaType === 'BlogPosting') {
+    jsonLd.headline = page.title;
+  }
+
+  return jsonLd;
+}
+
+function getContentAlternates(page, data) {
+  const alternates = page.alternates ?? page.hreflangs;
+  if (!alternates) {
+    return [];
+  }
+
+  const entries = Array.isArray(alternates)
+    ? alternates.map((alternate) => [
+        alternate.hreflang ?? alternate.lang ?? alternate.language,
+        alternate.href ?? alternate.url ?? alternate.path ?? alternate.slug,
+      ])
+    : Object.entries(alternates);
+
+  return entries
+    .filter(([hreflang, href]) => typeof hreflang === 'string' && typeof href === 'string')
+    .map(([hreflang, href]) => ({
+      hreflang,
+      href: /^https?:\/\//i.test(href)
+        ? href
+        : getCanonical(normalizePagePathname(href, data, `alternate ${hreflang}`), data),
+    }));
+}
+
+function getContentPages(data) {
+  const foundRegistry = findContentPageRegistry(data);
+  if (!foundRegistry) {
+    return [];
+  }
+
+  const rawItems = getContentPageRawItems(foundRegistry.registry, foundRegistry.exportName);
+  return rawItems.map((rawPage, index) => {
+    if (!isPlainObject(rawPage)) {
+      throw new Error(`${foundRegistry.exportName}[${index}]: expected a content page object`);
+    }
+
+    const label = `${foundRegistry.exportName}[${index}]`;
+    const title = getStringField(rawPage, ['title', 'seoTitle', 'metaTitle']);
+    const description = getStringField(rawPage, ['description', 'seoDescription', 'metaDescription']);
+    if (!title) {
+      throw new Error(`${label}: missing title`);
+    }
+    if (!description) {
+      throw new Error(`${label}: missing description`);
+    }
+
+    const pathname = normalizePagePathname(
+      getStringField(rawPage, ['pathname', 'path', 'urlPath', 'permalink', 'slug']),
+      data,
+      label,
+    );
+    const locale = resolveContentLocale(rawPage, data);
+    const canonical = getCanonical(pathname, data);
+
+    return {
+      ...rawPage,
+      title,
+      description,
+      h1: getStringField(rawPage, ['h1', 'headline']) ?? title,
+      pathname,
+      canonical,
+      locale,
+      alternates: getContentAlternates(rawPage, data),
+      jsonLd: getContentJsonLd({ ...rawPage, title, description }, canonical, locale, data, label),
+    };
+  });
+}
+
 function renderHead({
   assets,
   canonical,
@@ -161,8 +404,7 @@ ${alternates
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="${escapeHtml(title)}" />
     <meta name="twitter:description" content="${escapeHtml(description)}" />
-    <script type="application/ld+json">${escapeScriptJson(jsonLd)}</script>
-${assets.adsense ? `    ${assets.adsense}\n` : ''}${appBootStyles}
+${jsonLd ? `    <script type="application/ld+json">${escapeScriptJson(jsonLd)}</script>\n` : ''}${assets.adsense ? `    ${assets.adsense}\n` : ''}${appBootStyles}
 ${headScript}
     ${includeApp ? assets.app : assets.css}`;
 }
@@ -478,6 +720,88 @@ ${rows}
       </main>`;
 }
 
+function renderParagraphs(value) {
+  if (!value) {
+    return '';
+  }
+
+  const paragraphs = Array.isArray(value) ? value : [value];
+  return paragraphs
+    .filter((paragraph) => paragraph !== null && paragraph !== undefined && String(paragraph).trim())
+    .map((paragraph) => `          <p>${escapeHtml(paragraph)}</p>`)
+    .join('\n');
+}
+
+function renderList(value) {
+  if (!Array.isArray(value) || value.length === 0) {
+    return '';
+  }
+
+  return `          <ul>
+${value
+  .filter((item) => item !== null && item !== undefined && String(item).trim())
+  .map((item) => `            <li>${escapeHtml(item)}</li>`)
+  .join('\n')}
+          </ul>`;
+}
+
+function renderContentSection(section, index) {
+  if (typeof section === 'string') {
+    return `<section class="content-section">
+${renderParagraphs(section)}
+        </section>`;
+  }
+
+  if (!isPlainObject(section)) {
+    throw new Error(`content section ${index}: expected a string or object`);
+  }
+
+  const heading = getStringField(section, ['title', 'heading', 'headline']);
+  const paragraphs = section.paragraphs ?? section.body ?? section.content ?? section.text;
+  const items = section.items ?? section.list ?? section.bullets;
+
+  return `<section class="content-section">
+${heading ? `          <h2>${escapeHtml(heading)}</h2>\n` : ''}${renderParagraphs(paragraphs)}
+${renderList(items)}
+        </section>`;
+}
+
+function renderContentBody(page) {
+  if (typeof page.bodyHtml === 'string' && page.bodyHtml.trim()) {
+    return page.bodyHtml;
+  }
+
+  if (typeof page.html === 'string' && page.html.trim()) {
+    return page.html;
+  }
+
+  const sections = Array.isArray(page.sections)
+    ? page.sections
+    : Array.isArray(page.body)
+      ? page.body
+      : [];
+  const body = typeof page.body === 'string' ? renderParagraphs(page.body) : '';
+  const renderedSections = sections.map((section, index) => renderContentSection(section, index)).join('\n');
+
+  return [body, renderedSections].filter(Boolean).join('\n');
+}
+
+function renderContentPage(page, data) {
+  const intro = getStringField(page, ['intro', 'summary', 'dek']) ?? page.description;
+  const body = renderContentBody(page);
+
+  return `      <main class="content-shell">
+        <article class="content-hero">
+          <p class="eyebrow">${escapeHtml(data.HSKMAP_NAME)}</p>
+          <h1>${escapeHtml(page.h1)}</h1>
+          <p>${escapeHtml(intro)}</p>
+        </article>
+${body ? `        <article class="content-page" aria-label="${escapeHtml(page.h1)}">
+${body}
+        </article>` : ''}
+      </main>`;
+}
+
 function getJsonLd({ canonical, description, level, locale, title, data }) {
   const base = {
     '@context': 'https://schema.org',
@@ -509,7 +833,66 @@ function getJsonLd({ canonical, description, level, locale, title, data }) {
   };
 }
 
-async function generatePages(data, assets) {
+function getReservedSeoPathnames(data) {
+  const reservedPathnames = new Set(['/']);
+
+  for (const locale of data.SEO_LOCALES) {
+    reservedPathnames.add(data.getLocalizedPath(locale.id));
+    for (const level of data.HSK_LEVELS) {
+      reservedPathnames.add(data.getLocalizedPath(locale.id, level));
+    }
+  }
+
+  return reservedPathnames;
+}
+
+function assertContentPageMetadata(contentPages, data) {
+  const reservedPathnames = getReservedSeoPathnames(data);
+  const seenPathnames = new Set();
+  const seenTitles = new Map();
+
+  for (const page of contentPages) {
+    if (reservedPathnames.has(page.pathname)) {
+      throw new Error(`Content page ${page.pathname} would overwrite an existing map/language/level page`);
+    }
+
+    if (seenPathnames.has(page.pathname)) {
+      throw new Error(`Duplicate content page pathname: ${page.pathname}`);
+    }
+    seenPathnames.add(page.pathname);
+
+    const duplicatePathname = seenTitles.get(page.title);
+    if (duplicatePathname) {
+      throw new Error(
+        `Duplicate content page title "${page.title}" used by ${duplicatePathname} and ${page.pathname}`,
+      );
+    }
+    seenTitles.set(page.title, page.pathname);
+  }
+}
+
+async function generateContentPages(data, assets, contentPages) {
+  assertContentPageMetadata(contentPages, data);
+
+  for (const page of contentPages) {
+    await writePage(
+      page.pathname,
+      renderDocument({
+        assets,
+        body: renderContentPage(page, data),
+        canonical: page.canonical,
+        description: page.description,
+        includeApp: false,
+        jsonLd: page.jsonLd,
+        locale: page.locale,
+        alternates: page.alternates,
+        title: page.title,
+      }),
+    );
+  }
+}
+
+async function generatePages(data, assets, contentPages) {
   const defaultLocale = data.SEO_LOCALES.find((locale) => locale.id === 'en') ?? data.SEO_LOCALES[0];
   const rootTitle = 'HSKMAP | Choose your language';
   const rootDescription = 'Choose a language for HSKMAP, a visual HSK 1-6 vocabulary map for Chinese learners.';
@@ -589,19 +972,35 @@ async function generatePages(data, assets) {
       );
     }
   }
+
+  await generateContentPages(data, assets, contentPages);
 }
 
-async function writeRobotsAndSitemap(data) {
+async function writeRobotsAndSitemap(data, contentPages) {
   const today = new Date().toISOString().slice(0, 10);
-  const urls = ['/'];
+  const urls = [];
+  const seenUrls = new Set();
+
+  function addUrl(url) {
+    if (!seenUrls.has(url)) {
+      urls.push(url);
+      seenUrls.add(url);
+    }
+  }
+
+  addUrl('/');
 
   for (const locale of data.SEO_LOCALES) {
-    urls.push(data.getLocalizedPath(locale.id));
+    addUrl(data.getLocalizedPath(locale.id));
     for (const level of data.HSK_LEVELS) {
       if (isIndexableLevelPage(locale.id, level, data)) {
-        urls.push(data.getLocalizedPath(locale.id, level));
+        addUrl(data.getLocalizedPath(locale.id, level));
       }
     }
+  }
+
+  for (const page of contentPages) {
+    addUrl(page.pathname);
   }
 
   const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
@@ -631,12 +1030,14 @@ Sitemap: ${getCanonical('/sitemap.xml', data)}
 async function main() {
   const data = await loadSeoData();
   const assets = await getTemplateAssets();
+  const contentPages = getContentPages(data);
 
-  await generatePages(data, assets);
-  await writeRobotsAndSitemap(data);
+  await generatePages(data, assets, contentPages);
+  await writeRobotsAndSitemap(data, contentPages);
   await fs.rm(seoDataOutDir, { recursive: true, force: true });
 
-  console.log('Generated multilingual SEO pages, robots.txt, and sitemap.xml.');
+  const contentPageSummary = contentPages.length ? ` and ${contentPages.length} content pages` : '';
+  console.log(`Generated multilingual SEO pages${contentPageSummary}, robots.txt, and sitemap.xml.`);
 }
 
 main().catch((error) => {

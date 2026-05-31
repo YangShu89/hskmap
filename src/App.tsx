@@ -31,6 +31,8 @@ import {
   type AnalyticsProperties,
 } from './analytics';
 import {
+  HSKMAP_NAME,
+  HSKMAP_SITE_URL,
   SEO_LOCALES,
   getAppRouteFromPath,
   getLocalizedSeoGuide,
@@ -38,6 +40,7 @@ import {
   getLocaleByLanguage,
   type HskView,
 } from './seo';
+import { getContentPageBySlug, type ContentPage } from './contentPages';
 import type {
   ClassicHskLevel,
   ClusterId,
@@ -261,6 +264,18 @@ const FLASHCARD_PROMPT_MODES: { id: FlashcardPromptMode }[] = [
   { id: 'chinese' },
   { id: 'translation' },
 ];
+const CONTENT_FOOTER_LINKS = [
+  { href: '/about/', label: 'About' },
+  { href: '/contact/', label: 'Contact' },
+  { href: '/privacy/', label: 'Privacy' },
+  { href: '/terms/', label: 'Terms' },
+  { href: '/hsk-study-guide/', label: 'Study Guide' },
+  { href: '/hsk-1-study-plan/', label: 'HSK 1 Plan' },
+  { href: '/hsk-2-study-plan/', label: 'HSK 2 Plan' },
+  { href: '/classic-hsk-vocabulary-guide/', label: 'Classic HSK Guide' },
+  { href: '/pinyin-and-tones-guide/', label: 'Pinyin & Tones' },
+  { href: '/how-to-use-hskmap/', label: 'How to Use HSK Map' },
+] as const;
 const FLASHCARD_PROMPT_MODE_STORAGE_KEY = 'hsk-flashcard-prompt-mode';
 const LANGUAGE_STORAGE_KEY = 'hsk-translation-language';
 const LANGUAGE_OPTIONS = SEO_LOCALES;
@@ -482,6 +497,99 @@ function getInitialIsHsk3ReadingMap() {
   }
 
   return isHsk3ReadingMapPath(window.location.pathname);
+}
+
+function normalizeStaticContentPath(pathname: string) {
+  const normalizedPath = pathname.startsWith('/') ? pathname : `/${pathname}`;
+  return normalizedPath.endsWith('/') ? normalizedPath : `${normalizedPath}/`;
+}
+
+function getStaticContentPageForCurrentPath() {
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+
+  return getContentPageBySlug(normalizeStaticContentPath(window.location.pathname));
+}
+
+function setMetaTag(selector: string, attributes: Record<string, string>) {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  let meta = document.head.querySelector(selector);
+  if (!meta) {
+    meta = document.createElement('meta');
+    document.head.appendChild(meta);
+  }
+
+  Object.entries(attributes).forEach(([name, value]) => {
+    meta?.setAttribute(name, value);
+  });
+}
+
+function setCanonicalLink(href: string) {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  let canonical = document.head.querySelector('link[rel="canonical"]');
+  if (!canonical) {
+    canonical = document.createElement('link');
+    canonical.setAttribute('rel', 'canonical');
+    document.head.appendChild(canonical);
+  }
+
+  canonical.setAttribute('href', href);
+}
+
+function StaticContentPage({ page }: { page: ContentPage }) {
+  const canonical = new URL(page.slug, HSKMAP_SITE_URL).href;
+
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = page.title;
+    setMetaTag('meta[name="description"]', {
+      name: 'description',
+      content: page.description,
+    });
+    setMetaTag('meta[name="robots"]', {
+      name: 'robots',
+      content: 'index,follow',
+    });
+    setCanonicalLink(canonical);
+
+    return () => {
+      document.title = previousTitle;
+    };
+  }, [canonical, page.description, page.title]);
+
+  return (
+    <main className="content-shell" lang="en">
+      <article className="content-hero">
+        <p className="eyebrow">{HSKMAP_NAME}</p>
+        <h1>{page.title}</h1>
+        <p>{page.description}</p>
+      </article>
+      <article className="content-page" aria-label={page.title}>
+        {page.sections.map((section) => (
+          <section className="content-section" key={section.id}>
+            <h2>{section.heading}</h2>
+            {section.paragraphs.map((paragraph) => (
+              <p key={paragraph}>{paragraph}</p>
+            ))}
+            {section.items ? (
+              <ul>
+                {section.items.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            ) : null}
+          </section>
+        ))}
+      </article>
+    </main>
+  );
 }
 
 function isIgnoredMapPanTarget(target: EventTarget | null) {
@@ -4204,7 +4312,7 @@ function Hsk3ReadingMap() {
   );
 }
 
-function App() {
+function WordMapApp() {
   useLayoutEffect(() => {
     document.documentElement.classList.remove('app-loading');
   }, []);
@@ -5522,6 +5630,13 @@ function App() {
             HSKMap is an independent study tool and is not affiliated with Chinese Testing International
             or the official HSK exam.
           </p>
+          <nav className="content-footer" aria-label="Site resources">
+            {CONTENT_FOOTER_LINKS.map((link) => (
+              <a href={link.href} key={link.href}>
+                {link.label}
+              </a>
+            ))}
+          </nav>
         </>
       ) : null}
 
@@ -5565,6 +5680,16 @@ function App() {
       ) : null}
     </main>
   );
+}
+
+function App() {
+  const staticContentPage = getStaticContentPageForCurrentPath();
+
+  if (staticContentPage) {
+    return <StaticContentPage page={staticContentPage} />;
+  }
+
+  return <WordMapApp />;
 }
 
 export default App;

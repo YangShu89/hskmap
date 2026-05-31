@@ -4,6 +4,19 @@ export {
   loadLocalizedMeanings,
 } from '../src/data/translationLoaders';
 export {
+  CONTENT_PAGE_REGISTRY,
+  CONTENT_PAGE_SLUGS,
+  CONTENT_PAGES,
+  CONTENT_PAGES_BY_SLUG,
+  getContentPageBySlug,
+} from '../src/contentPages';
+export type {
+  ContentPage,
+  ContentPageJsonLd,
+  ContentPageSection,
+  ContentPageSlug,
+} from '../src/contentPages';
+export {
   HSK_LEVELS,
   HSKMAP_NAME,
   HSKMAP_SITE_URL,
