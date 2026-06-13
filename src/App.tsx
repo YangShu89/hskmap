@@ -40,7 +40,12 @@ import {
   getLocaleByLanguage,
   type HskView,
 } from './seo';
-import { getContentPageBySlug, type ContentPage } from './contentPages';
+import {
+  SITE_RESOURCE_LINKS,
+  STUDY_RESOURCE_LINKS,
+  getContentPageBySlug,
+  type ContentPage,
+} from './contentPages';
 import type {
   ClassicHskLevel,
   ClusterId,
@@ -264,18 +269,6 @@ const FLASHCARD_PROMPT_MODES: { id: FlashcardPromptMode }[] = [
   { id: 'chinese' },
   { id: 'translation' },
 ];
-const CONTENT_FOOTER_LINKS = [
-  { href: '/about/', label: 'About' },
-  { href: '/contact/', label: 'Contact' },
-  { href: '/privacy/', label: 'Privacy' },
-  { href: '/terms/', label: 'Terms' },
-  { href: '/hsk-study-guide/', label: 'Study Guide' },
-  { href: '/hsk-1-study-plan/', label: 'HSK 1 Plan' },
-  { href: '/hsk-2-study-plan/', label: 'HSK 2 Plan' },
-  { href: '/classic-hsk-vocabulary-guide/', label: 'Classic HSK Guide' },
-  { href: '/pinyin-and-tones-guide/', label: 'Pinyin & Tones' },
-  { href: '/how-to-use-hskmap/', label: 'How to Use HSK Map' },
-] as const;
 const FLASHCARD_PROMPT_MODE_STORAGE_KEY = 'hsk-flashcard-prompt-mode';
 const LANGUAGE_STORAGE_KEY = 'hsk-translation-language';
 const LANGUAGE_OPTIONS = SEO_LOCALES;
@@ -566,6 +559,11 @@ function StaticContentPage({ page }: { page: ContentPage }) {
 
   return (
     <main className="content-shell" lang="en">
+      <nav className="content-top-nav" aria-label="HSKMAP navigation">
+        <a href="/en/">Vocabulary map</a>
+        <a href="/resources/">Study resources</a>
+        <a href="/about/">About</a>
+      </nav>
       <article className="content-hero">
         <p className="eyebrow">{HSKMAP_NAME}</p>
         <h1>{page.title}</h1>
@@ -588,6 +586,29 @@ function StaticContentPage({ page }: { page: ContentPage }) {
           </section>
         ))}
       </article>
+      <section className="site-resources" aria-labelledby="content-related-title">
+        <p className="site-resources-eyebrow">Related HSKMAP resources</p>
+        <h2 id="content-related-title">Keep studying with the map</h2>
+        <div className="site-resource-grid">
+          {STUDY_RESOURCE_LINKS.filter((link) => link.href !== page.slug).map((link) => (
+            <a className="site-resource-card" href={link.href} key={link.href}>
+              <strong>{link.label}</strong>
+              <span>{link.description}</span>
+            </a>
+          ))}
+          <a className="site-resource-card" href="/en/">
+            <strong>Open the vocabulary map</strong>
+            <span>Review all classic HSK 1-6 levels with word cards, audio, examples, and progress labels.</span>
+          </a>
+        </div>
+      </section>
+      <nav className="content-footer" aria-label="Site information">
+        {SITE_RESOURCE_LINKS.map((link) => (
+          <a href={link.href} key={link.href}>
+            {link.label}
+          </a>
+        ))}
+      </nav>
     </main>
   );
 }
@@ -5630,8 +5651,20 @@ function WordMapApp() {
             HSKMap is an independent study tool and is not affiliated with Chinese Testing International
             or the official HSK exam.
           </p>
+          <section className="site-resources" aria-labelledby="site-resources-title">
+            <p className="site-resources-eyebrow">Study resources</p>
+            <h2 id="site-resources-title">Use the map with a study plan</h2>
+            <div className="site-resource-grid">
+              {STUDY_RESOURCE_LINKS.map((link) => (
+                <a className="site-resource-card" href={link.href} key={link.href}>
+                  <strong>{link.label}</strong>
+                  <span>{link.description}</span>
+                </a>
+              ))}
+            </div>
+          </section>
           <nav className="content-footer" aria-label="Site resources">
-            {CONTENT_FOOTER_LINKS.map((link) => (
+            {SITE_RESOURCE_LINKS.map((link) => (
               <a href={link.href} key={link.href}>
                 {link.label}
               </a>

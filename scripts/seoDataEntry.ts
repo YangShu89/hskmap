@@ -8,12 +8,16 @@ export {
   CONTENT_PAGE_SLUGS,
   CONTENT_PAGES,
   CONTENT_PAGES_BY_SLUG,
+  CONTENT_RESOURCE_LINKS,
+  SITE_RESOURCE_LINKS,
+  STUDY_RESOURCE_LINKS,
   getContentPageBySlug,
 } from '../src/contentPages';
 export type {
   ContentPage,
   ContentPageJsonLd,
   ContentPageSection,
+  ContentResourceLink,
   ContentPageSlug,
 } from '../src/contentPages';
 export {

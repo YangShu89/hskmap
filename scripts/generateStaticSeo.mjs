@@ -261,6 +261,10 @@ function getContentJsonLd(page, canonical, locale, data, label) {
       url: data.HSKMAP_SITE_URL,
     },
   };
+  const dateModified = getStringField(page, ['updated', 'dateModified', 'modified', 'lastModified']);
+  if (dateModified) {
+    jsonLd.dateModified = dateModified;
+  }
 
   if (schemaType === 'Article' || schemaType === 'BlogPosting') {
     jsonLd.headline = page.title;
@@ -555,7 +559,76 @@ function renderRootHub(data) {
         <nav class="seo-language-grid" aria-label="Choose language">
 ${languageLinks}
         </nav>
+${renderStaticResourceSection(data, {
+  title: 'HSK study resources',
+  eyebrow: 'Study guides',
+  ariaLabel: 'HSKMAP study resources',
+})}
       </main>`;
+}
+
+function getResourceLinks(data, exportName) {
+  const links = data[exportName];
+  return Array.isArray(links) ? links : [];
+}
+
+function renderResourceLinkCards(links, currentPathname = null) {
+  return links
+    .filter((link) => link && typeof link.href === 'string' && link.href !== currentPathname)
+    .map(
+      (link) => `          <a class="site-resource-card" href="${escapeHtml(link.href)}">
+            <strong>${escapeHtml(link.label ?? link.href)}</strong>
+            <span>${escapeHtml(link.description ?? '')}</span>
+          </a>`,
+    )
+    .join('\n');
+}
+
+function renderStaticResourceSection(
+  data,
+  { ariaLabel = 'Related study resources', currentPathname = null, includeMapLink = false, title, eyebrow },
+) {
+  const studyCards = renderResourceLinkCards(getResourceLinks(data, 'STUDY_RESOURCE_LINKS'), currentPathname);
+  const mapCard = includeMapLink
+    ? `          <a class="site-resource-card" href="${escapeHtml(data.getLocalizedPath('en'))}">
+            <strong>Open the vocabulary map</strong>
+            <span>Review all classic HSK 1-6 levels with word cards, audio, examples, and progress labels.</span>
+          </a>`
+    : '';
+  const cards = [studyCards, mapCard].filter(Boolean).join('\n');
+
+  if (!cards) {
+    return '';
+  }
+
+  return `        <section class="site-resources" aria-label="${escapeHtml(ariaLabel)}">
+          <p class="site-resources-eyebrow">${escapeHtml(eyebrow)}</p>
+          <h2>${escapeHtml(title)}</h2>
+          <div class="site-resource-grid">
+${cards}
+          </div>
+        </section>`;
+}
+
+function renderContentTopNav() {
+  return `        <nav class="content-top-nav" aria-label="HSKMAP navigation">
+          <a href="/en/">Vocabulary map</a>
+          <a href="/resources/">Study resources</a>
+          <a href="/about/">About</a>
+        </nav>`;
+}
+
+function renderSiteInfoFooter(data) {
+  const links = getResourceLinks(data, 'SITE_RESOURCE_LINKS');
+  if (!links.length) {
+    return '';
+  }
+
+  return `        <nav class="content-footer" aria-label="Site information">
+${links
+  .map((link) => `          <a href="${escapeHtml(link.href)}">${escapeHtml(link.label ?? link.href)}</a>`)
+  .join('\n')}
+        </nav>`;
 }
 
 function renderLocalizedSeoGuide(view, locale, data) {
@@ -656,6 +729,11 @@ function renderHomePage(locale, data) {
 ${levelCards}
         </section>
 ${renderLocalizedSeoGuide('all', locale, data)}
+${renderStaticResourceSection(data, {
+  title: 'Use the map with a study plan',
+  eyebrow: 'Study resources',
+  ariaLabel: 'HSKMAP study resources',
+})}
       </main>`;
 }
 
@@ -698,6 +776,11 @@ async function renderLevelPage(locale, level, data) {
           <p><a href="${escapeHtml(data.getLocalizedPath(locale.id))}">All HSK levels</a></p>
         </section>
 ${renderLocalizedSeoGuide(level, locale, data)}
+${renderStaticResourceSection(data, {
+  title: 'More ways to study this level',
+  eyebrow: 'Study resources',
+  ariaLabel: `HSK ${level} study resources`,
+})}
         <section class="seo-table-panel" aria-label="HSK ${level} vocabulary">
           <h2>HSK ${level} vocabulary list</h2>
           <div class="seo-table-scroll">
@@ -757,10 +840,11 @@ ${renderParagraphs(section)}
   }
 
   const heading = getStringField(section, ['title', 'heading', 'headline']);
+  const sectionId = getStringField(section, ['id', 'anchor']);
   const paragraphs = section.paragraphs ?? section.body ?? section.content ?? section.text;
   const items = section.items ?? section.list ?? section.bullets;
 
-  return `<section class="content-section">
+  return `<section class="content-section"${sectionId ? ` id="${escapeHtml(sectionId)}"` : ''}>
 ${heading ? `          <h2>${escapeHtml(heading)}</h2>\n` : ''}${renderParagraphs(paragraphs)}
 ${renderList(items)}
         </section>`;
@@ -791,6 +875,7 @@ function renderContentPage(page, data) {
   const body = renderContentBody(page);
 
   return `      <main class="content-shell">
+${renderContentTopNav()}
         <article class="content-hero">
           <p class="eyebrow">${escapeHtml(data.HSKMAP_NAME)}</p>
           <h1>${escapeHtml(page.h1)}</h1>
@@ -799,6 +884,14 @@ function renderContentPage(page, data) {
 ${body ? `        <article class="content-page" aria-label="${escapeHtml(page.h1)}">
 ${body}
         </article>` : ''}
+${renderStaticResourceSection(data, {
+  title: 'Keep studying with the map',
+  eyebrow: 'Related HSKMAP resources',
+  ariaLabel: 'Related HSKMAP resources',
+  currentPathname: page.pathname,
+  includeMapLink: true,
+})}
+${renderSiteInfoFooter(data)}
       </main>`;
 }
 

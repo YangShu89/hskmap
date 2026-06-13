@@ -223,6 +223,17 @@ function verifyCommon(html, label) {
   );
 }
 
+function verifyStaticContentDocument(html, label) {
+  assert(html.includes('<main class="content-shell">'), `${label}: missing static content shell`);
+  assert(html.includes('class="content-top-nav"'), `${label}: missing content top navigation`);
+  assert(html.includes('class="site-resources"'), `${label}: missing related resource section`);
+  assert(html.includes('href="/en/"'), `${label}: missing link back to vocabulary map`);
+  assert(html.includes('href="/resources/"'), `${label}: missing link to resource hub`);
+  assert(!html.includes('class="app-loading"'), `${label}: content page should not use app loading shell`);
+  assert(!/<script\b[^>]*\btype="module"[^>]*\bsrc="\/assets\//.test(html), `${label}: content page should not load app module assets`);
+  assert(!html.includes('<noscript>'), `${label}: content page should not rely on app noscript fallback`);
+}
+
 function verifyContentPages(contentPages, sitemap) {
   const seenTitles = new Map();
 
@@ -237,6 +248,7 @@ function verifyContentPages(contentPages, sitemap) {
 
       const html = await readPageByPathname(page.pathname);
       const label = page.pathname;
+      verifyStaticContentDocument(html, label);
       assert((html.match(/<h1\b/g) ?? []).length === 1, `${label}: expected exactly one h1`);
       assert(html.includes(`<title>${escapeHtml(page.title)}</title>`), `${label}: missing expected title`);
       assert(
@@ -272,6 +284,8 @@ async function main() {
   const rootHtml = await readPage();
   verifyCommon(rootHtml, '/');
   assert(rootHtml.includes('hreflang="x-default"'), '/: missing x-default hreflang');
+  assert(rootHtml.includes('href="/resources/"'), '/: missing resource hub link');
+  assert(rootHtml.includes('class="site-resources"'), '/: missing study resources section');
 
   for (const [slug, hreflang] of locales) {
     const homeHtml = await readPage(slug);
@@ -279,6 +293,7 @@ async function main() {
     assert(homeHtml.includes(`hreflang="${hreflang}"`), `/${slug}/: missing self hreflang`);
     assert(homeHtml.includes(`lang="${hreflang}"`), `/${slug}/: missing html lang`);
     assert(homeHtml.includes('class="hsk-guide"'), `/${slug}/: missing localized HSK guide`);
+    assert(homeHtml.includes('href="/resources/"'), `/${slug}/: missing resource hub link`);
     if (slug === 'en') {
       assert(homeHtml.includes('HSK vocabulary from HSK 1 to HSK 6'), '/en/: missing English guide content');
       assert(homeHtml.includes('How many words are in HSK 1 to HSK 6?'), '/en/: missing English FAQ content');
